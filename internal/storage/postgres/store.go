@@ -110,4 +110,52 @@ CREATE INDEX relationships_destination_internal_id_idx ON relationships(destinat
 CREATE INDEX relationships_relation_type_idx ON relationships(relation_type);
 CREATE INDEX crawl_runs_data_source_started_at_idx ON crawl_runs(data_source_id, started_at);`,
 	},
+	{
+		Version: 3,
+		Name:    "assets_raw_assets",
+		SQL: `CREATE TABLE assets (
+	data_source_id TEXT NOT NULL REFERENCES data_sources(id),
+	internal_id TEXT NOT NULL,
+	element_type TEXT NOT NULL,
+	name TEXT NOT NULL,
+	hash TEXT NOT NULL,
+	retrieved_at TIMESTAMP NOT NULL,
+	is_json_data BOOLEAN NOT NULL,
+	version TEXT NOT NULL,
+	status TEXT NOT NULL,
+	first_seen TIMESTAMP NOT NULL,
+	last_seen TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL,
+	PRIMARY KEY(data_source_id, internal_id, element_type)
+);
+INSERT INTO assets (data_source_id, internal_id, element_type, name, hash, retrieved_at, is_json_data, version, status, first_seen, last_seen, updated_at)
+SELECT data_source_id, internal_id, element_type, name, hash, retrieved_at, is_json_data, version, status, first_seen, last_seen, updated_at FROM crawled_elements;
+CREATE TABLE raw_assets (
+	data_source_id TEXT NOT NULL,
+	internal_id TEXT NOT NULL,
+	element_type TEXT NOT NULL,
+	hash TEXT NOT NULL,
+	crawl_run_id TEXT NOT NULL REFERENCES crawl_runs(id),
+	raw_data BYTEA NOT NULL,
+	raw_json TEXT,
+	first_seen TIMESTAMP NOT NULL,
+	last_seen TIMESTAMP NOT NULL,
+	updated_at TIMESTAMP NOT NULL,
+	PRIMARY KEY(data_source_id, internal_id, element_type, hash),
+	FOREIGN KEY(data_source_id, internal_id, element_type) REFERENCES assets(data_source_id, internal_id, element_type)
+);
+INSERT INTO raw_assets (data_source_id, internal_id, element_type, hash, crawl_run_id, raw_data, raw_json, first_seen, last_seen, updated_at)
+SELECT data_source_id, internal_id, element_type, hash, crawl_run_id, raw_data, raw_json, observed_at, observed_at, observed_at FROM crawled_element_versions;
+DROP TABLE crawled_element_versions;
+DROP TABLE crawled_elements;
+CREATE INDEX assets_data_source_type_idx ON assets(data_source_id, element_type);
+CREATE INDEX assets_name_idx ON assets(name);
+CREATE INDEX assets_last_seen_idx ON assets(last_seen);
+CREATE INDEX raw_assets_identity_hash_idx ON raw_assets(data_source_id, internal_id, element_type, hash);`,
+	},
+	{
+		Version: 4,
+		Name:    "asset_metadata_without_hash",
+		SQL:     `ALTER TABLE assets DROP COLUMN hash;`,
+	},
 }

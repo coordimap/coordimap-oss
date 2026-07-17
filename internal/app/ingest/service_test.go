@@ -65,8 +65,8 @@ func TestStoreCrawlSQLite(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 	assertRowCount(t, db, "data_sources", 1)
 	assertRowCount(t, db, "crawl_runs", 2)
-	assertRowCount(t, db, "crawled_elements", 2)
-	assertRowCount(t, db, "crawled_element_versions", 2)
+	assertRowCount(t, db, "assets", 2)
+	assertRowCount(t, db, "raw_assets", 2)
 	assertRowCount(t, db, "relationships", 1)
 }
 
@@ -103,8 +103,8 @@ func TestStoreCrawlInvalidRelationshipJSONStoresElementOnly(t *testing.T) {
 		t.Fatalf("sql.Open() error = %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	assertRowCount(t, db, "crawled_elements", 1)
-	assertRowCount(t, db, "crawled_element_versions", 1)
+	assertRowCount(t, db, "assets", 1)
+	assertRowCount(t, db, "raw_assets", 1)
 	assertRowCount(t, db, "relationships", 0)
 }
 

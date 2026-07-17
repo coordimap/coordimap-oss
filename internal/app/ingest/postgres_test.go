@@ -34,10 +34,10 @@ func TestStoreCrawlPostgres(t *testing.T) {
 		t.Fatalf("sql.Open() error = %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = db.Exec(`TRUNCATE relationships, crawled_element_versions, crawled_elements, crawl_runs, data_sources CASCADE`)
+		_, _ = db.Exec(`TRUNCATE raw_assets, relationships, assets, crawl_runs, data_sources CASCADE`)
 		_ = db.Close()
 	})
-	if _, err := db.Exec(`TRUNCATE relationships, crawled_element_versions, crawled_elements, crawl_runs, data_sources CASCADE`); err != nil {
+	if _, err := db.Exec(`TRUNCATE raw_assets, relationships, assets, crawl_runs, data_sources CASCADE`); err != nil {
 		t.Fatalf("truncate storage tables: %v", err)
 	}
 
@@ -61,7 +61,7 @@ func TestStoreCrawlPostgres(t *testing.T) {
 
 	assertRowCount(t, db, "data_sources", 1)
 	assertRowCount(t, db, "crawl_runs", 1)
-	assertRowCount(t, db, "crawled_elements", 2)
-	assertRowCount(t, db, "crawled_element_versions", 2)
+	assertRowCount(t, db, "assets", 2)
+	assertRowCount(t, db, "raw_assets", 2)
 	assertRowCount(t, db, "relationships", 1)
 }

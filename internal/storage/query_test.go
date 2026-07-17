@@ -1,7 +1,9 @@
 package storage_test
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"os"
 	"testing"
@@ -24,6 +26,76 @@ func TestQueryRepositorySQLite(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	testQueryRepository(t, store)
+}
+
+func TestSQLiteMigrateLegacyCrawledElementsToAssets(t *testing.T) {
+	ctx := context.Background()
+	dsn := "file:coordimap_storage_upgrade_" + uuid.NewString() + "?mode=memory&cache=shared"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	if _, err := db.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TIMESTAMP NOT NULL);
+CREATE TABLE data_sources (id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL, description TEXT NOT NULL, config_json TEXT NOT NULL, first_seen TIMESTAMP NOT NULL, last_seen TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL);
+CREATE TABLE crawl_runs (id TEXT PRIMARY KEY, data_source_id TEXT NOT NULL REFERENCES data_sources(id), crawl_internal_id TEXT NOT NULL, started_at TIMESTAMP NOT NULL, completed_at TIMESTAMP NOT NULL, element_count INTEGER NOT NULL, relationship_count INTEGER NOT NULL, error TEXT);
+CREATE TABLE crawled_elements (data_source_id TEXT NOT NULL REFERENCES data_sources(id), internal_id TEXT NOT NULL, element_type TEXT NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL, retrieved_at TIMESTAMP NOT NULL, is_json_data BOOLEAN NOT NULL, raw_data BLOB NOT NULL, raw_json TEXT, version TEXT NOT NULL, status TEXT NOT NULL, first_seen TIMESTAMP NOT NULL, last_seen TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL, PRIMARY KEY(data_source_id, internal_id, element_type));
+CREATE TABLE crawled_element_versions (id INTEGER PRIMARY KEY AUTOINCREMENT, data_source_id TEXT NOT NULL REFERENCES data_sources(id), crawl_run_id TEXT NOT NULL REFERENCES crawl_runs(id), internal_id TEXT NOT NULL, element_type TEXT NOT NULL, name TEXT NOT NULL, hash TEXT NOT NULL, retrieved_at TIMESTAMP NOT NULL, is_json_data BOOLEAN NOT NULL, raw_data BLOB NOT NULL, raw_json TEXT, version TEXT NOT NULL, status TEXT NOT NULL, observed_at TIMESTAMP NOT NULL, UNIQUE(data_source_id, internal_id, element_type, hash));`); err != nil {
+		t.Fatalf("provision legacy schema: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	rawData := []byte(`{"kind":"legacy"}`)
+	if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, 'initial', ?), (2, 'read_path_indexes', ?)`, now, now); err != nil {
+		t.Fatalf("record legacy migrations: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO data_sources (id, type, name, description, config_json, first_seen, last_seen, updated_at) VALUES ('legacy-source', 'test', 'legacy', '', '{}', ?, ?, ?)`, now, now, now); err != nil {
+		t.Fatalf("seed legacy data source: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO crawl_runs (id, data_source_id, crawl_internal_id, started_at, completed_at, element_count, relationship_count) VALUES ('legacy-run', 'legacy-source', '', ?, ?, 1, 0)`, now, now); err != nil {
+		t.Fatalf("seed legacy crawl run: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO crawled_elements (data_source_id, internal_id, element_type, name, hash, retrieved_at, is_json_data, raw_data, raw_json, version, status, first_seen, last_seen, updated_at) VALUES ('legacy-source', 'legacy-id', 'test.asset', 'legacy asset', 'legacy-hash', ?, TRUE, ?, ?, 'v1', 'Green', ?, ?, ?)`, now, rawData, string(rawData), now, now, now); err != nil {
+		t.Fatalf("seed legacy asset: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO crawled_element_versions (data_source_id, crawl_run_id, internal_id, element_type, name, hash, retrieved_at, is_json_data, raw_data, raw_json, version, status, observed_at) VALUES ('legacy-source', 'legacy-run', 'legacy-id', 'test.asset', 'legacy asset', 'legacy-hash', ?, TRUE, ?, ?, 'v1', 'Green', ?)`, now, rawData, string(rawData), now); err != nil {
+		t.Fatalf("seed legacy raw asset: %v", err)
+	}
+
+	store, err := sqlite.Open(dsn)
+	if err != nil {
+		t.Fatalf("sqlite.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("store.Migrate() error = %v", err)
+	}
+
+	var name, rawJSON string
+	var migratedRawData []byte
+	if err := db.QueryRowContext(ctx, `SELECT a.name, ra.raw_data, ra.raw_json FROM assets a JOIN raw_assets ra ON ra.data_source_id = a.data_source_id AND ra.internal_id = a.internal_id AND ra.element_type = a.element_type WHERE a.data_source_id = 'legacy-source'`).Scan(&name, &migratedRawData, &rawJSON); err != nil {
+		t.Fatalf("query migrated asset: %v", err)
+	}
+	if name != "legacy asset" || !bytes.Equal(migratedRawData, rawData) || rawJSON != string(rawData) {
+		t.Errorf("migrated asset = name %q raw %q json %q, want preserved legacy values", name, migratedRawData, rawJSON)
+	}
+	var hashColumnCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('assets') WHERE name = 'hash'`).Scan(&hashColumnCount); err != nil {
+		t.Fatalf("inspect assets columns: %v", err)
+	}
+	if hashColumnCount != 0 {
+		t.Error("assets still has a hash column")
+	}
+	for _, table := range []string{"crawled_elements", "crawled_element_versions"} {
+		var count int
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&count); err != nil {
+			t.Fatalf("check %s existence: %v", table, err)
+		}
+		if count != 0 {
+			t.Errorf("legacy table %s still exists", table)
+		}
+	}
 }
 
 func TestQueryRepositoryPostgres(t *testing.T) {
@@ -81,12 +153,20 @@ func testQueryRepository(t *testing.T, store ports.Store) {
 		t.Fatalf("CreateElement(assetB) error = %v", err)
 	}
 
+	assetAUpdated, err := utils.CreateElement(map[string]string{"kind": "updated"}, prefix+" Alpha Asset", assetAID, "test.asset", agent.StatusGreen, "v2", now.Add(-30*time.Second))
+	if err != nil {
+		t.Fatalf("CreateElement(assetAUpdated) error = %v", err)
+	}
+
 	service := ingest.NewService(store)
 	if err := service.StoreCrawl(ctx, crawlData(dataSourceA, now.Add(-time.Minute), assetA, binary, localRelationship, crossRelationship)); err != nil {
 		t.Fatalf("StoreCrawl(source A) error = %v", err)
 	}
 	if err := service.StoreCrawl(ctx, crawlData(dataSourceB, now, assetB)); err != nil {
 		t.Fatalf("StoreCrawl(source B) error = %v", err)
+	}
+	if err := service.StoreCrawl(ctx, crawlData(dataSourceA, now.Add(-30*time.Second), assetAUpdated)); err != nil {
+		t.Fatalf("StoreCrawl(updated source A) error = %v", err)
 	}
 
 	if err := store.WithTx(ctx, func(ctx context.Context, repos ports.Repositories) error {
@@ -121,6 +201,8 @@ func testQueryRepository(t *testing.T, store ports.Store) {
 			t.Errorf("GetAssets(json) = %#v, want JSON payload", jsonAssets)
 		} else if !json.Valid([]byte(*jsonAssets[0].RawJSON)) {
 			t.Errorf("GetAssets(json) raw JSON = %q, want valid JSON", *jsonAssets[0].RawJSON)
+		} else if jsonAssets[0].Hash != assetAUpdated.Hash || *jsonAssets[0].RawJSON != string(assetAUpdated.Data) {
+			t.Errorf("GetAssets(json) = %#v, want latest raw asset %q", jsonAssets[0], assetAUpdated.Hash)
 		}
 
 		binaryAssets, err := repos.Query().GetAssets(ctx, binaryID, "", dataSourceA)

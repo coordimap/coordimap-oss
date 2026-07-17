@@ -20,7 +20,7 @@ type Repositories interface {
 	DataSources() DataSourceRepository
 	CrawlRuns() CrawlRunRepository
 	Query() QueryRepository
-	CrawledElements() CrawledElementRepository
+	Assets() AssetRepository
 	Relationships() RelationshipRepository
 }
 
@@ -46,10 +46,10 @@ type CrawlRunRepository interface {
 	Insert(ctx context.Context, run CrawlRun) error
 }
 
-// CrawledElementRepository persists current state and immutable versions.
-type CrawledElementRepository interface {
+// AssetRepository persists current asset state and raw payload history.
+type AssetRepository interface {
 	Upsert(ctx context.Context, dataSourceID string, crawlRunID string, elem *agent.Element) error
-	InsertVersion(ctx context.Context, dataSourceID string, crawlRunID string, elem *agent.Element) error
+	UpsertRawAsset(ctx context.Context, dataSourceID string, crawlRunID string, elem *agent.Element) error
 }
 
 // RelationshipRepository persists current relationship state.
@@ -84,9 +84,10 @@ type AssetSummary struct {
 	LastSeen     time.Time
 }
 
-// Asset includes the stored asset payload.
+// Asset includes asset metadata and its payload from raw_assets.
 type Asset struct {
 	AssetSummary
+	// Hash identifies the selected raw asset payload.
 	Hash        string
 	IsJSONData  bool
 	RawData     []byte

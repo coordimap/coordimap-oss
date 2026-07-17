@@ -53,11 +53,11 @@ func (s *Service) StoreCrawl(ctx context.Context, data agent.CloudCrawlData) err
 			if elem == nil {
 				continue
 			}
-			if err := repos.CrawledElements().Upsert(ctx, data.DataSource.DataSourceID, run.ID, elem); err != nil {
-				return fmt.Errorf("upsert crawled element %q: %w", elem.ID, err)
+			if err := repos.Assets().Upsert(ctx, data.DataSource.DataSourceID, run.ID, elem); err != nil {
+				return fmt.Errorf("upsert asset %q: %w", elem.ID, err)
 			}
-			if err := repos.CrawledElements().InsertVersion(ctx, data.DataSource.DataSourceID, run.ID, elem); err != nil {
-				return fmt.Errorf("insert crawled element version %q: %w", elem.ID, err)
+			if err := repos.Assets().UpsertRawAsset(ctx, data.DataSource.DataSourceID, run.ID, elem); err != nil {
+				return fmt.Errorf("upsert raw asset %q: %w", elem.ID, err)
 			}
 
 			if elem.Type != agent.RelationshipType {

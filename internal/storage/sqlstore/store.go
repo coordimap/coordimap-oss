@@ -115,8 +115,8 @@ func (r repositories) CrawlRuns() ports.CrawlRunRepository {
 func (r repositories) Query() ports.QueryRepository {
 	return queryRepository{repositories: r}
 }
-func (r repositories) CrawledElements() ports.CrawledElementRepository {
-	return crawledElementRepository{repositories: r}
+func (r repositories) Assets() ports.AssetRepository {
+	return assetRepository{repositories: r}
 }
 func (r repositories) Relationships() ports.RelationshipRepository {
 	return relationshipRepository{repositories: r}
@@ -174,28 +174,27 @@ func (r crawlRunRepository) Insert(ctx context.Context, run ports.CrawlRun) erro
 	return nil
 }
 
-type crawledElementRepository struct{ repositories }
+type assetRepository struct{ repositories }
 
-func (r crawledElementRepository) Upsert(ctx context.Context, dataSourceID string, crawlRunID string, elem *agent.Element) error {
+func (r assetRepository) Upsert(ctx context.Context, dataSourceID string, crawlRunID string, elem *agent.Element) error {
 	_ = crawlRunID
-	values := elementValues(dataSourceID, elem)
-	query := `INSERT INTO crawled_elements (data_source_id, internal_id, element_type, name, hash, retrieved_at, is_json_data, raw_data, raw_json, version, status, first_seen, last_seen, updated_at) VALUES (` + r.placeholders(14) + `)
-ON CONFLICT (data_source_id, internal_id, element_type) DO UPDATE SET name = excluded.name, hash = excluded.hash, retrieved_at = excluded.retrieved_at, is_json_data = excluded.is_json_data, raw_data = excluded.raw_data, raw_json = excluded.raw_json, version = excluded.version, status = excluded.status, last_seen = excluded.last_seen, updated_at = excluded.updated_at`
+	values := assetValues(dataSourceID, elem)
+	query := `INSERT INTO assets (data_source_id, internal_id, element_type, name, retrieved_at, is_json_data, version, status, first_seen, last_seen, updated_at) VALUES (` + r.placeholders(11) + `)
+ON CONFLICT (data_source_id, internal_id, element_type) DO UPDATE SET name = excluded.name, retrieved_at = excluded.retrieved_at, is_json_data = excluded.is_json_data, version = excluded.version, status = excluded.status, last_seen = excluded.last_seen, updated_at = excluded.updated_at`
 	_, err := r.executor.ExecContext(ctx, query, values...)
 	if err != nil {
-		return fmt.Errorf("upsert crawled element: %w", err)
+		return fmt.Errorf("upsert asset: %w", err)
 	}
 	return nil
 }
 
-func (r crawledElementRepository) InsertVersion(ctx context.Context, dataSourceID string, crawlRunID string, elem *agent.Element) error {
+func (r assetRepository) UpsertRawAsset(ctx context.Context, dataSourceID string, crawlRunID string, elem *agent.Element) error {
 	observedAt := elementObservedAt(elem)
-	rawJSON := rawJSON(elem)
-	query := `INSERT INTO crawled_element_versions (data_source_id, crawl_run_id, internal_id, element_type, name, hash, retrieved_at, is_json_data, raw_data, raw_json, version, status, observed_at) VALUES (` + r.placeholders(13) + `)
-ON CONFLICT (data_source_id, internal_id, element_type, hash) DO NOTHING`
-	_, err := r.executor.ExecContext(ctx, query, dataSourceID, crawlRunID, elem.ID, elem.Type, elem.Name, elem.Hash, elem.RetrievedAt, elem.IsJSONData, elem.Data, rawJSON, elem.Version, elementStatus(elem), observedAt)
+	query := `INSERT INTO raw_assets (data_source_id, internal_id, element_type, hash, crawl_run_id, raw_data, raw_json, first_seen, last_seen, updated_at) VALUES (` + r.placeholders(10) + `)
+ON CONFLICT (data_source_id, internal_id, element_type, hash) DO UPDATE SET last_seen = excluded.last_seen, updated_at = excluded.updated_at`
+	_, err := r.executor.ExecContext(ctx, query, dataSourceID, elem.ID, elem.Type, elem.Hash, crawlRunID, elem.Data, rawJSON(elem), observedAt, observedAt, observedAt)
 	if err != nil {
-		return fmt.Errorf("insert crawled element version: %w", err)
+		return fmt.Errorf("upsert raw asset: %w", err)
 	}
 	return nil
 }
@@ -214,9 +213,9 @@ ON CONFLICT (data_source_id, source_internal_id, destination_internal_id, relati
 	return nil
 }
 
-func elementValues(dataSourceID string, elem *agent.Element) []any {
+func assetValues(dataSourceID string, elem *agent.Element) []any {
 	observedAt := elementObservedAt(elem)
-	return []any{dataSourceID, elem.ID, elem.Type, elem.Name, elem.Hash, elem.RetrievedAt, elem.IsJSONData, elem.Data, rawJSON(elem), elem.Version, elementStatus(elem), observedAt, observedAt, observedAt}
+	return []any{dataSourceID, elem.ID, elem.Type, elem.Name, elem.RetrievedAt, elem.IsJSONData, elem.Version, elementStatus(elem), observedAt, observedAt, observedAt}
 }
 
 func elementObservedAt(elem *agent.Element) time.Time {
@@ -289,7 +288,7 @@ func (r queryRepository) SearchAssets(ctx context.Context, search ports.AssetSea
 	}
 	args = append(args, boundedLimit(search.Limit, 25, 100))
 	query := `SELECT internal_id, element_type, data_source_id, name, status, last_seen
-FROM crawled_elements
+FROM assets
 WHERE ` + strings.Join(where, " AND ") + `
 ORDER BY last_seen DESC
 LIMIT ` + r.placeholder(len(args))
@@ -316,20 +315,29 @@ LIMIT ` + r.placeholder(len(args))
 }
 
 func (r queryRepository) GetAssets(ctx context.Context, internalID, elementType, dataSourceID string) ([]ports.Asset, error) {
-	where := []string{"internal_id = " + r.placeholder(1)}
+	where := []string{"a.internal_id = " + r.placeholder(1)}
 	args := []any{internalID}
 	if elementType != "" {
-		where = append(where, "element_type = "+r.placeholder(len(args)+1))
+		where = append(where, "a.element_type = "+r.placeholder(len(args)+1))
 		args = append(args, elementType)
 	}
 	if dataSourceID != "" {
-		where = append(where, "data_source_id = "+r.placeholder(len(args)+1))
+		where = append(where, "a.data_source_id = "+r.placeholder(len(args)+1))
 		args = append(args, dataSourceID)
 	}
-	query := `SELECT internal_id, element_type, data_source_id, name, status, last_seen, hash, is_json_data, raw_data, raw_json, version, retrieved_at, first_seen
-FROM crawled_elements
+	query := `WITH latest_raw_assets AS (
+	SELECT data_source_id, internal_id, element_type, hash, raw_data, raw_json,
+		ROW_NUMBER() OVER (
+			PARTITION BY data_source_id, internal_id, element_type
+			ORDER BY last_seen DESC, updated_at DESC, hash DESC
+		) AS row_number
+	FROM raw_assets
+)
+SELECT a.internal_id, a.element_type, a.data_source_id, a.name, a.status, a.last_seen, ra.hash, a.is_json_data, ra.raw_data, ra.raw_json, a.version, a.retrieved_at, a.first_seen
+FROM assets a
+JOIN latest_raw_assets ra ON ra.data_source_id = a.data_source_id AND ra.internal_id = a.internal_id AND ra.element_type = a.element_type AND ra.row_number = 1
 WHERE ` + strings.Join(where, " AND ") + `
-ORDER BY last_seen DESC`
+ORDER BY a.last_seen DESC`
 	rows, err := r.executor.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get assets: %w", err)
@@ -381,10 +389,10 @@ func (r queryRepository) GetRelationships(ctx context.Context, search ports.Rela
 	}
 	args = append(args, boundedLimit(search.Limit, 50, 200))
 	query := `SELECT r.data_source_id, r.source_internal_id, r.destination_internal_id, r.relationship_type, r.relation_type,
-	(SELECT ce.name FROM crawled_elements ce WHERE ce.internal_id = r.source_internal_id ORDER BY ce.last_seen DESC LIMIT 1),
-	(SELECT ce.element_type FROM crawled_elements ce WHERE ce.internal_id = r.source_internal_id ORDER BY ce.last_seen DESC LIMIT 1),
-	(SELECT ce.name FROM crawled_elements ce WHERE ce.internal_id = r.destination_internal_id ORDER BY ce.last_seen DESC LIMIT 1),
-	(SELECT ce.element_type FROM crawled_elements ce WHERE ce.internal_id = r.destination_internal_id ORDER BY ce.last_seen DESC LIMIT 1),
+	(SELECT a.name FROM assets a WHERE a.internal_id = r.source_internal_id ORDER BY a.last_seen DESC LIMIT 1),
+	(SELECT a.element_type FROM assets a WHERE a.internal_id = r.source_internal_id ORDER BY a.last_seen DESC LIMIT 1),
+	(SELECT a.name FROM assets a WHERE a.internal_id = r.destination_internal_id ORDER BY a.last_seen DESC LIMIT 1),
+	(SELECT a.element_type FROM assets a WHERE a.internal_id = r.destination_internal_id ORDER BY a.last_seen DESC LIMIT 1),
 	r.first_seen, r.last_seen
 FROM relationships r
 WHERE ` + strings.Join(where, " AND ") + `
