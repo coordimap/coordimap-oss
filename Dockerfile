@@ -18,14 +18,14 @@ RUN go env -w GOPRIVATE=dev.azure.com
 
 
 # Build the final Go binary
-RUN CGO_ENABLED=0 go build -a -o cmd/agent/agent cmd/agent/main.go
+RUN CGO_ENABLED=0 go build -a -o /coordimap-local ./cmd/coordimap-local
 
 # --- Final Stage ---
 FROM alpine:3.21.6
 
-COPY --from=build-env /src/cmd/agent/agent /agent
+COPY --from=build-env /coordimap-local /coordimap-local
 
-RUN addgroup -S coordimap-agent && adduser -S coordimap-agent -G coordimap-agent
-USER coordimap-agent
+RUN addgroup -S coordimap && adduser -S coordimap -G coordimap
+USER coordimap
 
-CMD [ "/agent" ]
+CMD ["/coordimap-local"]

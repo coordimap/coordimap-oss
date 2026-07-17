@@ -11,35 +11,34 @@ Coordimap Agent is a Go infrastructure crawler that gathers inventory, configura
 
 ### Build and run
 
-- Build: `go build -o agent cmd/agent/main.go`
+- Build: `go build -o coordimap-local ./cmd/coordimap-local`
 - Test: `go test ./...`
-- Build the Docker image: `docker build -t coordimap-agent .`
+- Build the Docker image: `docker build -t coordimap-local .`
 - The module declares Go 1.26. `GEMINI.md`'s Go 1.23+ prerequisite is stale.
 
 ### Configuration today
 
-YAML configuration defaults to `config.yaml`; the example is `configs/agent.example.yaml`. Current CLI flags include `--config`, `--endpoint`, and `--debug`. Values in YAML may resolve from environment variables. `build/package/agent/nfpm.yaml` is existing package metadata; it is not part of the local-first runtime architecture.
+YAML configuration defaults to `config.yaml`; the example is `configs/coordimap-local.example.yaml`. Current CLI flags include `--config` and `--debug`. Values in YAML may resolve from environment variables.
 
 ## Current code facts
 
-- `cmd/agent/main.go` loads YAML with `configuration.NewYamlFileConfig`, validates Kubernetes scope mappings, starts one goroutine per crawler from `integrations.IntegrationsFactory`, receives `*agent.CloudCrawlData` through `sender := make(chan *agent.CloudCrawlData, 5000)`, deduplicates each batch with `dedup.CloudCrawlData`, cleans sensitive datasource configuration with `utils.CleanUpDataSource`, then POSTs `collector.AddCrawledInfraFromAgentRequest` to `--endpoint` with `gorequest`.
+- `cmd/coordimap-local/main.go` loads YAML with `configuration.NewYamlFileConfig`, opens and migrates the configured local store, starts crawlers through `internal/app/crawl.Runner`, deduplicates each received `*agent.CloudCrawlData` batch with `dedup.CloudCrawlData`, persists it with `internal/app/ingest.Service`, and exposes the store through MCP stdio.
 - `internal/integrations/types.go` defines `type Crawler interface { Crawl() }` and these integration constants: `postgres`, `aws`, `kubernetes`, `aws_flow_logs`, `mongodb`, `mariadb`, `mysql`, `gcp`, and `flows`. `README.md` documents all except the internal-only `flows` integration.
 - `internal/integrations/integrations.go` maps those constants to constructors that produce crawlers writing to `chan *agent.CloudCrawlData`.
 - `pkg/domain/agent/types.go` defines the shared envelope: `Element{RetrievedAt time.Time, Name string, Type string, ID string, Hash string, Data []byte, IsJSONData bool, Version string, Status string}`, `DataSource`, `CloudCrawlData`, and `RelationshipElement{SourceID string, DestinationID string, RelationshipType string, RelationType int}`.
 - `pkg/utils/helpers.go` creates JSON elements with `CreateElement`, gob-encoded AWS elements with `CreateAWSElement`, and relationship wrapper elements with `CreateRelationship`. Relationship wrapper elements have `Type == agent.RelationshipType` (`"coordimap.relationship_skipinsert"`).
-- `internal/graph/dedup/dedup.go` deduplicates assets by `(elem.Type, elem.ID)` and relationships by `(SourceID, DestinationID, RelationshipType, RelationType)` before remote upload.
-- `cmd/collector` is a small Redis-publishing HTTP sample, not the local-storage target.
+- `internal/graph/dedup/dedup.go` deduplicates assets by `(elem.Type, elem.ID)` and relationships by `(SourceID, DestinationID, RelationshipType, RelationType)` before local persistence.
 - Imports use `github.com/coordimap/agent/...`; shared domain types live under `pkg/domain/...`, and the YAML parser is `internal/config/yaml_config.go`.
 
 ## Target architecture
 
 Keep existing crawler packages as producers. Do not rewrite AWS, GCP, Kubernetes, PostgreSQL, MySQL, MariaDB, MongoDB, or flow crawlers for storage.
 
-1. `cmd/agent/main.go` continues to receive and deduplicate batches before any sink.
-2. When `coordimap.database` is configured, the agent sanitizes the data source and persists the deduplicated batch through `internal/app/ingest.Service` in addition to the existing collector POST. When it is omitted, the agent keeps collector-only behavior.
+1. `cmd/coordimap-local/main.go` receives and deduplicates batches before storage.
+2. `coordimap.database` is required; every deduplicated batch is persisted through `internal/app/ingest.Service`.
 3. Use `database/sql` for SQLite and PostgreSQL. Use existing `github.com/lib/pq` for PostgreSQL and `modernc.org/sqlite` for SQLite, preserving the CGO-free Docker build (`CGO_ENABLED=0`).
-4. Use `mark3labs/mcp-go` for the MCP server: it supports Go MCP servers, stdio transport, tools, resources, and JSON-RPC handling. Stdio is the default local-agent transport. If dependency policy rejects it, implement a minimal JSON-RPC MCP transport under `internal/mcp` with the same tool names and schemas below.
-5. Keep dependencies pointing inward: domain types in `pkg/domain/agent`, use cases in `internal/app`, repository interfaces in `internal/app/ports`, SQL implementations in `internal/storage/sqlite` and `internal/storage/postgres`, the storage factory in `internal/storage`, the MCP adapter in `internal/mcp`, and executable composition in `cmd/agent`.
+4. Use `mark3labs/mcp-go` for the MCP server: it supports Go MCP servers, stdio transport, tools, resources, and JSON-RPC handling. Stdio is the default local transport.
+5. Keep dependencies pointing inward: domain types in `pkg/domain/agent`, use cases in `internal/app`, repository interfaces in `internal/app/ports`, SQL implementations in `internal/storage/sqlite` and `internal/storage/postgres`, the storage factory in `internal/storage`, the MCP adapter in `internal/mcp`, and executable composition in `cmd/coordimap-local`.
 
 ## Storage schema
 
@@ -72,8 +71,8 @@ The optional storage path uses these packages:
 - `internal/storage/sqlstore/store.go`: shared `database/sql` transaction wrapper and dialect abstraction.
 - `internal/storage/sqlite/store.go`: SQLite driver registration and migrations.
 - `internal/storage/postgres/store.go`: PostgreSQL driver registration and migrations.
-- `internal/storage/storage.go`: driver factory used by `cmd/agent`.
-- `cmd/agent/main.go`: crawler startup, deduplication, optional persistence, and collector delivery.
+- `internal/storage/storage.go`: driver factory used by `cmd/coordimap-local`.
+- `cmd/coordimap-local/main.go`: crawler startup, deduplication, local persistence, and MCP stdio serving.
 
 Preserve existing `internal/integrations/*` APIs and reuse `internal/graph/dedup.CloudCrawlData`.
 
@@ -115,7 +114,7 @@ type RelationshipRepository interface {
 
 ## Crawler ingestion flow
 
-1. Load YAML with `configuration.NewYamlFileConfig` and `GetAllDataSources`, exactly as `cmd/agent/main.go` does now.
+1. Load YAML with `configuration.NewYamlFileConfig` and `GetAllDataSources`, exactly as `cmd/coordimap-local/main.go` does now.
 2. Run `validateKubernetesScopeMappings` before crawler startup.
 3. Create `sender := make(chan *agent.CloudCrawlData, 5000)` and pass it to `integrations.IntegrationsFactory`, exactly as today.
 4. For each received batch: reject an empty `DataSourceID`; call `dedup.CloudCrawlData`; sanitize configuration with `utils.CleanUpDataSource(&batch.DataSource, configuration.GetSkipFields())`; persist the sanitized data source first; persist every non-relationship element; persist every relationship element; then complete a `crawl_runs` row. One batch is one SQL transaction.
@@ -154,10 +153,9 @@ coordimap:
 1. Add repository interfaces and DTOs under `internal/app/ports`.
 2. Add portable migrations and `database/sql` store implementations for SQLite and PostgreSQL.
 3. Add `internal/app/ingest.Service` and tests using in-memory SQLite.
-4. Refactor `cmd/agent/main.go` only enough to share crawler startup and validation with `cmd/coordimap-local/main.go`; do not change crawler constructors.
-5. Add `cmd/coordimap-local/main.go` composition: load config, open store, migrate, start MCP stdio server, start configured crawlers, and pipe batches into the ingest service.
-6. Add MCP tool handlers backed only by `QueryRepository` and the crawl runner.
-7. Update `configs/agent.example.yaml` comments only if needed to document local-storage flags; do not move datasource configuration into the database in the first implementation.
+4. Add `cmd/coordimap-local/main.go` composition: load config, open store, migrate, start MCP stdio server, start configured crawlers, and pipe batches into the ingest service.
+5. Add MCP tool handlers backed only by `QueryRepository` and the crawl runner.
+6. Update `configs/coordimap-local.example.yaml` comments only if needed to document local-storage flags; do not move datasource configuration into the database in the first implementation.
 
 ## Verification
 

@@ -20,7 +20,7 @@ coordimap:
   #   }
   # }
 
-  # A list of data sources that the agent will collect data from.
+  # A list of data sources that coordimap-local crawls.
   # You can configure multiple data sources of different types here.
   # Uncomment the sections below to enable specific data sources.
   data_sources:
@@ -61,7 +61,7 @@ coordimap:
     #     - name: project_id
     #       value: my-gcp-project
     #     - name: credentials_file
-    #       value: /etc/coordimap-agent/gcp-service-account.json
+    #       value: /etc/coordimap-local/gcp-service-account.json
     #     # Enable VPC flow log collection on this same GCP data source.
     #     - name: gcp_flows
     #       value: "true"
@@ -168,7 +168,7 @@ coordimap:
     #
     #     # Path to the kubeconfig file (only used if in_cluster is "false").
     #     - name: config_file
-    #       value: /etc/coordimap-agent/kubeconfig
+    #       value: /etc/coordimap-local/kubeconfig
     #
     #     # Stable Kubernetes cluster identifier used in internal names.
     #     # Example command:

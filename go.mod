@@ -6,9 +6,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.5.2
 	github.com/aws/aws-sdk-go v1.44.143
 	github.com/gertd/go-pluralize v0.2.1
-	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.8.1
-	github.com/gorilla/mux v1.8.0
 	github.com/lib/pq v1.10.7
 	github.com/mark3labs/mcp-go v0.56.0
 	github.com/prometheus/client_golang v1.14.0
@@ -53,12 +51,9 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137 // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
-	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect

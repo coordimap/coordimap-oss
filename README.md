@@ -1,22 +1,19 @@
-# coordimap-agent
+# coordimap-local
 
-`coordimap-agent` is a data crawler that gathers information from various sources and generates a JSON graph of all the elements. It is written in Go and can be configured to crawl different data sources.
+`coordimap-local` crawls configured infrastructure sources, persists the resulting graph locally, and exposes it through an MCP server over stdio.
 
 ## Getting Started
 
-To get started with `coordimap-agent`, you\'ll need to have Go installed on your system. You can find the installation instructions for Go in the [official documentation](https://golang.org/doc/install).
+To get started with `coordimap-local`, install Go 1.26 or later.
 
 ### Dependencies
 
-`coordimap-agent` has the following dependencies:
+`coordimap-local` has the following dependencies:
 
 - [cloud.google.com/go/compute/metadata](http://cloud.google.com/go/compute/metadata)
 - [dev.azure.com/bloopi/bloopi/\_git/shared_models.git](http://dev.azure.com/bloopi/bloopi/_git/shared_models.git)
 - [github.com/aws/aws-sdk-go](http://github.com/aws/aws-sdk-go)
 - [github.com/gertd/go-pluralize](http://github.com/gertd/go-pluralize)
-- [github.com/go-redis/redis/v8](http://github.com/go-redis/redis/v8)
-- [github.com/go-sql-driver/mysql](http://github.com/go-sql-driver/mysql)
-- [github.com/gorilla/mux](http://github.com/gorilla/mux)
 - [github.com/lib/pq](http://github.com/lib/pq)
 - [modernc.org/sqlite](https://modernc.org/sqlite)
 - [github.com/prometheus/client_golang](http://github.com/prometheus/client_golang)
@@ -36,25 +33,29 @@ These dependencies will be automatically downloaded when you build the project.
 
 ## Build and Test
 
-To build and run `coordimap-agent`, you can use the provided Dockerfile. You will need to have Docker installed on your system. You can find the installation instructions for Docker in the [official documentation](https://docs.docker.com/get-docker/).
+Build the local MCP server:
 
-To build the Docker image, run the following command from the root of the project:
-
-```
-docker build -t coordimap-agent .
+```sh
+go build -o coordimap-local ./cmd/coordimap-local
 ```
 
-Once the image is built, you can run the `coordimap-agent` container with the following command:
+Or build its container image:
 
+```sh
+docker build -t coordimap-local .
 ```
-docker run coordimap-agent
+
+The container serves MCP over stdio:
+
+```sh
+docker run -i coordimap-local
 ```
 
 ## Configuration
 
-`coordimap-agent` is configured using a YAML file. By default, the application looks for a `config.yaml` file in the same directory as the executable. You can specify a different configuration file using the `--config` flag or the `COORDIMAP_CONFIG_PATH` environment variable.
+`coordimap-local` reads a YAML configuration file. By default, it looks for `config.yaml` next to the executable; override it with `--config` or `COORDIMAP_CONFIG_PATH`.
 
-The complete configuration shape is shown in `configs/config.yaml.template`. A fully commented version is available in `configs/agent.example.yaml`.
+The complete configuration shape is shown in `configs/config.yaml.template`. A fully commented version is available in `configs/coordimap-local.example.yaml`.
 
 The configuration file specifies the data sources to be crawled. Here is an example configuration:
 
@@ -81,15 +82,13 @@ coordimap:
         - name: project_id
           value: "your-gcp-project-id"
         - name: credentials_file
-          value: /etc/coordimap-agent/gcp-service-account.json
+          value: /etc/coordimap-local/gcp-service-account.json
         - name: crawl_interval
           value: 30s
 ```
 
 ### Local storage
-Set `coordimap.database.driver` to `sqlite` or `postgres` and provide
-`coordimap.database.connection_string` to persist deduplicated crawl batches
-locally. Local storage is required; the agent does not send crawled data to an external collector.
+`coordimap-local` requires `coordimap.database` and persists deduplicated crawl batches locally. It does not send crawled data to an external collector.
 
 ```yaml
 coordimap:
@@ -339,7 +338,7 @@ Use this UID as the `scope_id` in:
 
 ## Identity Matrix
 
-`coordimap-agent` uses an internal asset identity model that should be scoped by the upstream system identity, not by the connector `data_source_id`. The `data_source_id` identifies the crawl configuration, while the `scope_id` identifies the real ownership boundary the assets belong to.
+`coordimap-local` uses an internal asset identity model that should be scoped by the upstream system identity, not by the connector `data_source_id`. The `data_source_id` identifies the crawl configuration, while the `scope_id` identifies the real ownership boundary the assets belong to.
 
 | Data source     | Recommended `scope_id`    | Where it comes from                             | Typical asset path                                                                                                     |
 | --------------- | ------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -477,7 +476,7 @@ Notes:
 
 ## Metric Trigger Rules
 
-The agent can evaluate metric rules and send metric-trigger elements to the backend. These are sent as regular elements with type `coordimap.metric_trigger` and include all matching internal IDs in the element payload.
+`coordimap-local` evaluates metric rules and persists metric-trigger elements locally. These are regular elements with type `coordimap.metric_trigger` and include all matching internal IDs in the element payload.
 
 Metric rules are configured inside each datasource block (`data_sources[*].metric_rules`).
 Currently metric rules are supported only for datasource types:
@@ -628,4 +627,4 @@ For `external_mapping`, if no `external_mappings` entry matches, the target is i
 
 ## Contribute
 
-If you would like to contribute to `coordimap-agent`, please fork the repository and submit a pull request. We welcome all contributions!
+If you would like to contribute to `coordimap-local`, please fork the repository and submit a pull request. We welcome all contributions!

@@ -133,7 +133,7 @@ coordimap:
         - name: project_id
           value: your-gcp-project-id
         - name: credentials_file
-          value: /etc/coordimap-agent/gcp-service-account.json
+          value: /etc/coordimap-local/gcp-service-account.json
         - name: gcp_flows
           value: "true"
         - name: external_mappings

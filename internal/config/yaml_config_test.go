@@ -396,7 +396,7 @@ func TestGetDatabaseConfig(t *testing.T) {
 func TestRepositoryConfigurationExamplesParse(t *testing.T) {
 	for _, path := range []string{
 		"../../configs/config.yaml.template",
-		"../../configs/agent.example.yaml",
+		"../../configs/coordimap-local.example.yaml",
 	} {
 		t.Run(path, func(t *testing.T) {
 			content, err := os.ReadFile(path)
