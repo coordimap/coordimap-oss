@@ -9,6 +9,7 @@ import (
 type Config interface {
 	GetAllDataSources() map[string][]*agent.DataSource
 	GetCoordimapKey() (string, error)
+	GetDatabaseConfig() (*DatabaseConfig, error)
 	GetSkipFields() []string
 }
 
@@ -27,9 +28,16 @@ type CoordimapConfigDataSource struct {
 	MetricRules []metrics.RuleDeclaration `yaml:"metric_rules"`
 }
 
+// DatabaseConfig represents optional local crawl storage configuration.
+type DatabaseConfig struct {
+	Driver           string `yaml:"driver"`
+	ConnectionString string `yaml:"connection_string"`
+}
+
 // Coordimap holds the configuration specific to the Coordimap integration.
 type Coordimap struct {
 	APIKey      string                      `yaml:"api_key"`
+	Database    *DatabaseConfig             `yaml:"database,omitempty"`
 	SkipFields  []string                    `yaml:"skip_fields"`
 	DataSources []CoordimapConfigDataSource `yaml:"data_sources"`
 }

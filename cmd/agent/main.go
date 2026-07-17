@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/coordimap/agent/internal/app/ingest"
 	cloudutils "github.com/coordimap/agent/internal/cloud/utils"
 	configuration "github.com/coordimap/agent/internal/config"
 	"github.com/coordimap/agent/internal/graph/dedup"
 	"github.com/coordimap/agent/internal/integrations"
+	"github.com/coordimap/agent/internal/storage"
 	"github.com/coordimap/agent/pkg/utils"
 
 	"github.com/parnurzeal/gorequest"
@@ -128,6 +131,32 @@ func main() {
 	}
 	log.Info().Msgf("Loading configuration file %s", *configFile)
 
+	databaseConfig, errDatabaseConfig := configuration.GetDatabaseConfig()
+	if errDatabaseConfig != nil {
+		log.Error().Msgf("Could not load database configuration: %s", errDatabaseConfig)
+		return
+	}
+
+	var ingestService *ingest.Service
+	if databaseConfig != nil {
+		store, errStore := storage.Open(databaseConfig.Driver, databaseConfig.ConnectionString)
+		if errStore != nil {
+			log.Error().Msgf("Could not open local storage: %s", errStore)
+			return
+		}
+		if errMigrate := store.Migrate(context.Background()); errMigrate != nil {
+			_ = store.Close()
+			log.Error().Msgf("Could not migrate local storage: %s", errMigrate)
+			return
+		}
+		defer func() {
+			if errClose := store.Close(); errClose != nil {
+				log.Error().Msgf("Could not close local storage: %s", errClose)
+			}
+		}()
+		ingestService = ingest.NewService(store)
+	}
+
 	coordimapKey, errCoordimapKey := configuration.GetCoordimapKey()
 	if errCoordimapKey != nil || coordimapKey == "" {
 		log.Fatal().Msg("COORDIMAP_API_KEY is not set or is empty. Stopping the crawler.")
@@ -184,12 +213,18 @@ func main() {
 				Msg("Deduplicated crawled data before sending to collector")
 		}
 
-		requestStruct := collector.AddCrawledInfraFromAgentRequest{
-			CloudCrawlData: *crawledData,
+		sanitizedDataSource := *utils.CleanUpDataSource(&crawledData.DataSource, configuration.GetSkipFields())
+		sanitizedCrawledData := *crawledData
+		sanitizedCrawledData.DataSource = sanitizedDataSource
+		if ingestService != nil {
+			if errStore := ingestService.StoreCrawl(context.Background(), sanitizedCrawledData); errStore != nil {
+				log.Error().Err(errStore).Str("DataSourceID", sanitizedDataSource.DataSourceID).Msg("Could not store crawled data locally")
+			}
 		}
 
-		requestStruct.CloudCrawlData.DataSource = *utils.CleanUpDataSource(&requestStruct.CloudCrawlData.DataSource, configuration.GetSkipFields())
-
+		requestStruct := collector.AddCrawledInfraFromAgentRequest{
+			CloudCrawlData: sanitizedCrawledData,
+		}
 		coordimapKey, errCoordimapKey := configuration.GetCoordimapKey()
 		if errCoordimapKey != nil || coordimapKey == "" {
 			log.Fatal().Msg("COORDIMAP_API_KEY is not set or is empty. Stopping the crawler.")
@@ -216,7 +251,9 @@ func main() {
 			continue
 		}
 
-		resp.Body.Close()
+		if errClose := resp.Body.Close(); errClose != nil {
+			log.Error().Msgf("Could not close collector response body: %s", errClose)
+		}
 		log.Info().
 			Str("CrawlTime", time.Since(crawledData.Timestamp).String()).
 			Str("DataSourceID", crawledData.DataSource.DataSourceID).

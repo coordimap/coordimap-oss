@@ -18,6 +18,7 @@ To get started with `coordimap-agent`, you\'ll need to have Go installed on your
 - [github.com/go-sql-driver/mysql](http://github.com/go-sql-driver/mysql)
 - [github.com/gorilla/mux](http://github.com/gorilla/mux)
 - [github.com/lib/pq](http://github.com/lib/pq)
+- [modernc.org/sqlite](https://modernc.org/sqlite)
 - [github.com/parnurzeal/gorequest](http://github.com/parnurzeal/gorequest)
 - [github.com/prometheus/client_golang](http://github.com/prometheus/client_golang)
 - [github.com/prometheus/common](http://github.com/prometheus/common)
@@ -125,6 +126,30 @@ coordimap:
           value: /etc/coordimap-agent/gcp-service-account.json
         - name: crawl_interval
           value: 30s
+```
+
+### Optional local storage
+
+Set `coordimap.database.driver` to `sqlite` or `postgres` and provide
+`coordimap.database.connection_string` to persist deduplicated crawl batches
+locally. When the section is omitted, the agent retains collector-only behavior.
+
+```yaml
+coordimap:
+  api_key: ${COORDIMAP_API_KEY}
+  database:
+    driver: sqlite
+    connection_string: file:coordimap.db
+  data_sources: []
+```
+
+For PostgreSQL, use the same shape with this connection string:
+
+```yaml
+coordimap:
+  database:
+    driver: postgres
+    connection_string: postgres://coordimap:password@localhost:5432/coordimap?sslmode=disable
 ```
 
 Supported data source types are `aws`, `gcp`, `kubernetes`, `postgres`, `mysql`, `mariadb`, `mongodb`, `aws_flow_logs`.

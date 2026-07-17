@@ -3,6 +3,7 @@ package configuration_test
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	configuration "github.com/coordimap/agent/internal/config"
@@ -16,7 +17,11 @@ func TestNewYamlFileConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmpfile.Name()) // clean up
+	t.Cleanup(func() {
+		if errRemove := os.Remove(tmpfile.Name()); errRemove != nil {
+			t.Errorf("Remove() error = %v", errRemove)
+		}
+	})
 
 	content := []byte(`
 coordimap:
@@ -273,6 +278,136 @@ func TestNewYamlStringConfigMetricRulesModeValidation(t *testing.T) {
 `)
 	if errConfig == nil {
 		t.Fatalf("NewYamlStringConfig() expected metric rule mode validation error")
+	}
+}
+
+func TestGetDatabaseConfig(t *testing.T) {
+	t.Setenv("COORDIMAP_DATABASE_URL", "postgres://coordimap:password@localhost:5432/coordimap?sslmode=disable")
+
+	tests := []struct {
+		name            string
+		yaml            string
+		want            *configuration.DatabaseConfig
+		wantErrContains string
+	}{
+		{
+			name: "absent database configuration",
+			yaml: `coordimap:
+  api_key: test-key
+  data_sources: []`,
+		},
+		{
+			name: "valid SQLite configuration",
+			yaml: `coordimap:
+  api_key: test-key
+  database:
+    driver: sqlite
+    connection_string: file:coordimap.db
+  data_sources: []`,
+			want: &configuration.DatabaseConfig{
+				Driver:           "sqlite",
+				ConnectionString: "file:coordimap.db",
+			},
+		},
+		{
+			name: "valid PostgreSQL configuration",
+			yaml: `coordimap:
+  api_key: test-key
+  database:
+    driver: postgres
+    connection_string: postgres://coordimap:password@localhost:5432/coordimap?sslmode=disable
+  data_sources: []`,
+			want: &configuration.DatabaseConfig{
+				Driver:           "postgres",
+				ConnectionString: "postgres://coordimap:password@localhost:5432/coordimap?sslmode=disable",
+			},
+		},
+		{
+			name: "invalid driver",
+			yaml: `coordimap:
+  api_key: test-key
+  database:
+    driver: mysql
+    connection_string: mysql://localhost/coordimap
+  data_sources: []`,
+			wantErrContains: "coordimap.database.driver",
+		},
+		{
+			name: "missing connection string",
+			yaml: `coordimap:
+  api_key: test-key
+  database:
+    driver: sqlite
+  data_sources: []`,
+			wantErrContains: "coordimap.database.connection_string",
+		},
+		{
+			name: "environment connection string",
+			yaml: `coordimap:
+  api_key: test-key
+  database:
+    driver: postgres
+    connection_string: ${COORDIMAP_DATABASE_URL}
+  data_sources: []`,
+			want: &configuration.DatabaseConfig{
+				Driver:           "postgres",
+				ConnectionString: "postgres://coordimap:password@localhost:5432/coordimap?sslmode=disable",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := configuration.NewYamlStringConfig(tt.yaml)
+			if tt.wantErrContains != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Fatalf("NewYamlStringConfig() error = %v, want containing %q", err, tt.wantErrContains)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewYamlStringConfig() error = %v", err)
+			}
+
+			filePath := createTempConfigFile(t, tt.yaml)
+			runtimeConfig, err := configuration.NewYamlFileConfig(filePath)
+			if err != nil {
+				t.Fatalf("NewYamlFileConfig() error = %v", err)
+			}
+			got, err := runtimeConfig.GetDatabaseConfig()
+			if err != nil {
+				t.Fatalf("GetDatabaseConfig() error = %v", err)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetDatabaseConfig() = %#v, want %#v", got, tt.want)
+			}
+			if got != nil {
+				got.Driver = "mutated"
+				reloaded, err := runtimeConfig.GetDatabaseConfig()
+				if err != nil {
+					t.Fatalf("GetDatabaseConfig() reload error = %v", err)
+				}
+				if !reflect.DeepEqual(reloaded, tt.want) {
+					t.Errorf("GetDatabaseConfig() returned mutable parsed config: %#v, want %#v", reloaded, tt.want)
+				}
+			}
+		})
+	}
+}
+func TestRepositoryConfigurationExamplesParse(t *testing.T) {
+	for _, path := range []string{
+		"../../configs/config.yaml.template",
+		"../../configs/agent.example.yaml",
+	} {
+		t.Run(path, func(t *testing.T) {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile(%q) error = %v", path, err)
+			}
+			if _, err := configuration.NewYamlStringConfig(string(content)); err != nil {
+				t.Fatalf("NewYamlStringConfig(%q) error = %v", path, err)
+			}
+		})
 	}
 }
 

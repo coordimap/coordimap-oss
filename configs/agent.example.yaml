@@ -4,6 +4,17 @@ coordimap:
   # using the ${VAR_NAME} syntax.
   api_key: ${COORDIMAP_API_KEY}
 
+  # Optional local storage for deduplicated crawled elements. When omitted,
+  # the agent keeps its current collector-only behavior.
+  # database:
+  #   # Supported values: sqlite, postgres
+  #   driver: sqlite
+  #   # SQLite example:
+  #   connection_string: file:coordimap.db
+  #   # PostgreSQL example:
+  #   # driver: postgres
+  #   # connection_string: ${COORDIMAP_DATABASE_URL}
+
   # A list of data sources that the agent will collect data from.
   # You can configure multiple data sources of different types here.
   # Uncomment the sections below to enable specific data sources.

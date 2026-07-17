@@ -31,6 +31,22 @@ func (coordimapConfig *yamlConfig) GetCoordimapKey() (string, error) {
 	return value, nil
 }
 
+func (coordimapConfig *yamlConfig) GetDatabaseConfig() (*DatabaseConfig, error) {
+	if coordimapConfig.parsedConfig == nil || coordimapConfig.parsedConfig.Database == nil {
+		return nil, nil
+	}
+
+	connectionString, err := utils.LoadValueFromEnvConfig(coordimapConfig.parsedConfig.Database.ConnectionString)
+	if err != nil {
+		return nil, err
+	}
+
+	return &DatabaseConfig{
+		Driver:           coordimapConfig.parsedConfig.Database.Driver,
+		ConnectionString: connectionString,
+	}, nil
+}
+
 func (coordimapConfig *yamlConfig) GetSkipFields() []string {
 	if coordimapConfig.parsedConfig == nil {
 		return []string{}
@@ -121,6 +137,16 @@ func NewYamlStringConfig(yamlContent string) (*CoordimapConfig, error) {
 		// Actually, even if it is a placeholder, it should be present in the struct.
 		// If the string is empty, it means the key is missing from YAML.
 		return nil, fmt.Errorf("missing required field: coordimap.api_key")
+	}
+
+	if config.Coordimap.Database != nil {
+		if config.Coordimap.Database.Driver != "sqlite" && config.Coordimap.Database.Driver != "postgres" {
+			return nil, fmt.Errorf("invalid field: coordimap.database.driver must be sqlite or postgres")
+		}
+
+		if config.Coordimap.Database.ConnectionString == "" {
+			return nil, fmt.Errorf("missing required field: coordimap.database.connection_string")
+		}
 	}
 
 	for _, configuredDataSource := range config.Coordimap.DataSources {
