@@ -15,6 +15,17 @@ coordimap:
   #   # driver: postgres
   #   # connection_string: ${COORDIMAP_DATABASE_URL}
 
+  # coordimap-local requires this database block and serves MCP only over stdio.
+  # Register it with your MCP client using:
+  # {
+  #   "mcpServers": {
+  #     "coordimap": {
+  #       "command": "coordimap-local",
+  #       "args": ["--config", "/absolute/path/to/config.yaml"]
+  #     }
+  #   }
+  # }
+
   # A list of data sources that the agent will collect data from.
   # You can configure multiple data sources of different types here.
   # Uncomment the sections below to enable specific data sources.

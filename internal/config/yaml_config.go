@@ -131,13 +131,6 @@ func NewYamlStringConfig(yamlContent string) (*CoordimapConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", errorUnmarshal)
 	}
 
-	// Basic validation
-	if config.Coordimap.APIKey == "" {
-		// Check if it's an env var placeholder, if not, it's missing
-		// Actually, even if it is a placeholder, it should be present in the struct.
-		// If the string is empty, it means the key is missing from YAML.
-		return nil, fmt.Errorf("missing required field: coordimap.api_key")
-	}
 
 	if config.Coordimap.Database != nil {
 		if config.Coordimap.Database.Driver != "sqlite" && config.Coordimap.Database.Driver != "postgres" {

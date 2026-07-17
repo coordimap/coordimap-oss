@@ -19,6 +19,7 @@ type Store interface {
 type Repositories interface {
 	DataSources() DataSourceRepository
 	CrawlRuns() CrawlRunRepository
+	Query() QueryRepository
 	CrawledElements() CrawledElementRepository
 	Relationships() RelationshipRepository
 }
@@ -54,4 +55,75 @@ type CrawledElementRepository interface {
 // RelationshipRepository persists current relationship state.
 type RelationshipRepository interface {
 	Upsert(ctx context.Context, dataSourceID string, crawlRunID string, elem *agent.Element, rel agent.RelationshipElement) error
+}
+
+// DataSourceSummary describes a persisted data source and its latest completed crawl.
+type DataSourceSummary struct {
+	ID          string
+	Type        string
+	Name        string
+	LastCrawlAt *time.Time
+}
+
+// AssetSearch specifies optional filters for asset summaries.
+type AssetSearch struct {
+	Query        string
+	Type         string
+	DataSourceID string
+	Status       string
+	Limit        int
+}
+
+// AssetSummary describes an asset without its payload.
+type AssetSummary struct {
+	InternalID   string
+	Type         string
+	DataSourceID string
+	Name         string
+	Status       string
+	LastSeen     time.Time
+}
+
+// Asset includes the stored asset payload.
+type Asset struct {
+	AssetSummary
+	Hash        string
+	IsJSONData  bool
+	RawData     []byte
+	RawJSON     *string
+	Version     string
+	RetrievedAt time.Time
+	FirstSeen   time.Time
+	LastSeen    time.Time
+}
+
+// RelationshipSearch specifies relationship filters.
+type RelationshipSearch struct {
+	InternalID   string
+	Direction    string
+	RelationType *int
+	Limit        int
+}
+
+// Relationship describes a persisted edge with best-effort endpoint metadata.
+type Relationship struct {
+	DataSourceID          string
+	SourceInternalID      string
+	DestinationInternalID string
+	RelationshipType      string
+	RelationType          int
+	SourceName            *string
+	SourceType            *string
+	DestinationName       *string
+	DestinationType       *string
+	FirstSeen             time.Time
+	LastSeen              time.Time
+}
+
+// QueryRepository provides read-only access to persisted crawler data.
+type QueryRepository interface {
+	ListDataSources(ctx context.Context) ([]DataSourceSummary, error)
+	SearchAssets(ctx context.Context, search AssetSearch) ([]AssetSummary, error)
+	GetAssets(ctx context.Context, internalID, elementType, dataSourceID string) ([]Asset, error)
+	GetRelationships(ctx context.Context, search RelationshipSearch) ([]Relationship, error)
 }

@@ -152,6 +152,25 @@ coordimap:
     connection_string: postgres://coordimap:password@localhost:5432/coordimap?sslmode=disable
 ```
 
+### Local MCP server
+
+`coordimap-local` requires `coordimap.database` and serves all MCP protocol traffic over
+stdio. It does not require `coordimap.api_key`, unlike `coordimap-agent`; do not write
+secrets or data payloads to stdout outside the JSON-RPC protocol.
+
+Register the executable with an MCP client:
+
+```json
+{
+  "mcpServers": {
+    "coordimap": {
+      "command": "coordimap-local",
+      "args": ["--config", "/absolute/path/to/config.yaml"]
+    }
+  }
+}
+```
+
 Supported data source types are `aws`, `gcp`, `kubernetes`, `postgres`, `mysql`, `mariadb`, `mongodb`, `aws_flow_logs`.
 
 Most crawlers support `crawl_interval` values using seconds or minutes, for example `30s` or `5m`.

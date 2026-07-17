@@ -138,10 +138,21 @@ func TestNewYamlStringConfig(t *testing.T) {
           value: pass1`},
 		},
 		{
-			name:    "missing api key",
-			want:    nil,
-			wantErr: true,
+			name: "database-only local config",
+			want: &configuration.CoordimapConfig{
+				Coordimap: configuration.Coordimap{
+					Database: &configuration.DatabaseConfig{
+						Driver:           "sqlite",
+						ConnectionString: "file:coordimap.db",
+					},
+					DataSources: []configuration.CoordimapConfigDataSource{},
+				},
+			},
+			wantErr: false,
 			args: args{yamlContent: `coordimap:
+  database:
+    driver: sqlite
+    connection_string: file:coordimap.db
   data_sources: []`},
 		},
 	}

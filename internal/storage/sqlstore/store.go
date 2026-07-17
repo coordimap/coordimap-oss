@@ -6,10 +6,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"time"
-
 	"github.com/coordimap/agent/internal/app/ports"
 	"github.com/coordimap/agent/pkg/domain/agent"
+	"strings"
+	"time"
 )
 
 // Dialect controls SQL placeholder syntax.
@@ -95,6 +95,8 @@ func (s *store) Close() error {
 }
 
 type executor interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
@@ -108,6 +110,10 @@ func (r repositories) DataSources() ports.DataSourceRepository {
 }
 func (r repositories) CrawlRuns() ports.CrawlRunRepository {
 	return crawlRunRepository{repositories: r}
+}
+
+func (r repositories) Query() ports.QueryRepository {
+	return queryRepository{repositories: r}
 }
 func (r repositories) CrawledElements() ports.CrawledElementRepository {
 	return crawledElementRepository{repositories: r}
@@ -232,4 +238,236 @@ func elementStatus(elem *agent.Element) string {
 		return agent.StatusNoStatus
 	}
 	return elem.Status
+}
+
+type queryRepository struct{ repositories }
+
+func (r queryRepository) ListDataSources(ctx context.Context) ([]ports.DataSourceSummary, error) {
+	rows, err := r.executor.QueryContext(ctx, `SELECT d.id, d.type, d.name, MAX(c.completed_at)
+FROM data_sources d
+LEFT JOIN crawl_runs c ON c.data_source_id = d.id
+GROUP BY d.id, d.type, d.name
+ORDER BY d.name, d.id`)
+	if err != nil {
+		return nil, fmt.Errorf("list data sources: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []ports.DataSourceSummary
+	for rows.Next() {
+		var summary ports.DataSourceSummary
+		var lastCrawl nullableTime
+		if err := rows.Scan(&summary.ID, &summary.Type, &summary.Name, &lastCrawl); err != nil {
+			return nil, fmt.Errorf("scan data source: %w", err)
+		}
+		if lastCrawl.Valid {
+			value := lastCrawl.Time
+			summary.LastCrawlAt = &value
+		}
+		summaries = append(summaries, summary)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate data sources: %w", err)
+	}
+	return summaries, nil
+}
+
+func (r queryRepository) SearchAssets(ctx context.Context, search ports.AssetSearch) ([]ports.AssetSummary, error) {
+	where := []string{"LOWER(name) LIKE LOWER(" + r.placeholder(1) + ")"}
+	args := []any{"%" + search.Query + "%"}
+	if search.Type != "" {
+		where = append(where, "element_type = "+r.placeholder(len(args)+1))
+		args = append(args, search.Type)
+	}
+	if search.DataSourceID != "" {
+		where = append(where, "data_source_id = "+r.placeholder(len(args)+1))
+		args = append(args, search.DataSourceID)
+	}
+	if search.Status != "" {
+		where = append(where, "status = "+r.placeholder(len(args)+1))
+		args = append(args, search.Status)
+	}
+	args = append(args, boundedLimit(search.Limit, 25, 100))
+	query := `SELECT internal_id, element_type, data_source_id, name, status, last_seen
+FROM crawled_elements
+WHERE ` + strings.Join(where, " AND ") + `
+ORDER BY last_seen DESC
+LIMIT ` + r.placeholder(len(args))
+	rows, err := r.executor.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search assets: %w", err)
+	}
+	defer rows.Close()
+
+	var assets []ports.AssetSummary
+	for rows.Next() {
+		var asset ports.AssetSummary
+		var lastSeen nullableTime
+		if err := rows.Scan(&asset.InternalID, &asset.Type, &asset.DataSourceID, &asset.Name, &asset.Status, &lastSeen); err != nil {
+			return nil, fmt.Errorf("scan asset summary: %w", err)
+		}
+		asset.LastSeen = lastSeen.Time
+		assets = append(assets, asset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate asset summaries: %w", err)
+	}
+	return assets, nil
+}
+
+func (r queryRepository) GetAssets(ctx context.Context, internalID, elementType, dataSourceID string) ([]ports.Asset, error) {
+	where := []string{"internal_id = " + r.placeholder(1)}
+	args := []any{internalID}
+	if elementType != "" {
+		where = append(where, "element_type = "+r.placeholder(len(args)+1))
+		args = append(args, elementType)
+	}
+	if dataSourceID != "" {
+		where = append(where, "data_source_id = "+r.placeholder(len(args)+1))
+		args = append(args, dataSourceID)
+	}
+	query := `SELECT internal_id, element_type, data_source_id, name, status, last_seen, hash, is_json_data, raw_data, raw_json, version, retrieved_at, first_seen
+FROM crawled_elements
+WHERE ` + strings.Join(where, " AND ") + `
+ORDER BY last_seen DESC`
+	rows, err := r.executor.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get assets: %w", err)
+	}
+	defer rows.Close()
+
+	var assets []ports.Asset
+	for rows.Next() {
+		var asset ports.Asset
+		var rawJSON sql.NullString
+		var lastSeen, retrievedAt, firstSeen nullableTime
+		if err := rows.Scan(&asset.InternalID, &asset.Type, &asset.DataSourceID, &asset.Name, &asset.Status, &lastSeen, &asset.Hash, &asset.IsJSONData, &asset.RawData, &rawJSON, &asset.Version, &retrievedAt, &firstSeen); err != nil {
+			return nil, fmt.Errorf("scan asset: %w", err)
+		}
+		asset.LastSeen = lastSeen.Time
+		asset.RetrievedAt = retrievedAt.Time
+		asset.FirstSeen = firstSeen.Time
+		if rawJSON.Valid {
+			value := rawJSON.String
+			asset.RawJSON = &value
+		}
+		assets = append(assets, asset)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate assets: %w", err)
+	}
+	return assets, nil
+}
+
+func (r queryRepository) GetRelationships(ctx context.Context, search ports.RelationshipSearch) ([]ports.Relationship, error) {
+	where := make([]string, 0, 2)
+	args := make([]any, 0, 3)
+	switch search.Direction {
+	case "", "both":
+		where = append(where, "(source_internal_id = "+r.placeholder(1)+" OR destination_internal_id = "+r.placeholder(2)+")")
+		args = append(args, search.InternalID, search.InternalID)
+	case "incoming":
+		where = append(where, "destination_internal_id = "+r.placeholder(1))
+		args = append(args, search.InternalID)
+	case "outgoing":
+		where = append(where, "source_internal_id = "+r.placeholder(1))
+		args = append(args, search.InternalID)
+	default:
+		return nil, fmt.Errorf("invalid relationship direction %q", search.Direction)
+	}
+	if search.RelationType != nil {
+		where = append(where, "relation_type = "+r.placeholder(len(args)+1))
+		args = append(args, *search.RelationType)
+	}
+	args = append(args, boundedLimit(search.Limit, 50, 200))
+	query := `SELECT r.data_source_id, r.source_internal_id, r.destination_internal_id, r.relationship_type, r.relation_type,
+	(SELECT ce.name FROM crawled_elements ce WHERE ce.internal_id = r.source_internal_id ORDER BY ce.last_seen DESC LIMIT 1),
+	(SELECT ce.element_type FROM crawled_elements ce WHERE ce.internal_id = r.source_internal_id ORDER BY ce.last_seen DESC LIMIT 1),
+	(SELECT ce.name FROM crawled_elements ce WHERE ce.internal_id = r.destination_internal_id ORDER BY ce.last_seen DESC LIMIT 1),
+	(SELECT ce.element_type FROM crawled_elements ce WHERE ce.internal_id = r.destination_internal_id ORDER BY ce.last_seen DESC LIMIT 1),
+	r.first_seen, r.last_seen
+FROM relationships r
+WHERE ` + strings.Join(where, " AND ") + `
+ORDER BY r.last_seen DESC
+LIMIT ` + r.placeholder(len(args))
+	rows, err := r.executor.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get relationships: %w", err)
+	}
+	defer rows.Close()
+
+	var relationships []ports.Relationship
+	for rows.Next() {
+		var relationship ports.Relationship
+		var sourceName, sourceType, destinationName, destinationType sql.NullString
+		var firstSeen, lastSeen nullableTime
+		if err := rows.Scan(&relationship.DataSourceID, &relationship.SourceInternalID, &relationship.DestinationInternalID, &relationship.RelationshipType, &relationship.RelationType, &sourceName, &sourceType, &destinationName, &destinationType, &firstSeen, &lastSeen); err != nil {
+			return nil, fmt.Errorf("scan relationship: %w", err)
+		}
+		relationship.SourceName = stringPointer(sourceName)
+		relationship.SourceType = stringPointer(sourceType)
+		relationship.DestinationName = stringPointer(destinationName)
+		relationship.DestinationType = stringPointer(destinationType)
+		relationship.FirstSeen = firstSeen.Time
+		relationship.LastSeen = lastSeen.Time
+		relationships = append(relationships, relationship)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate relationships: %w", err)
+	}
+	return relationships, nil
+}
+
+func boundedLimit(limit, defaultLimit, maxLimit int) int {
+	if limit < 1 {
+		return defaultLimit
+	}
+	if limit > maxLimit {
+		return maxLimit
+	}
+	return limit
+}
+
+func stringPointer(value sql.NullString) *string {
+	if !value.Valid {
+		return nil
+	}
+	result := value.String
+	return &result
+}
+
+type nullableTime struct {
+	Time  time.Time
+	Valid bool
+}
+
+func (value *nullableTime) Scan(source any) error {
+	if source == nil {
+		value.Time = time.Time{}
+		value.Valid = false
+		return nil
+	}
+	if timestamp, ok := source.(time.Time); ok {
+		value.Time = timestamp
+		value.Valid = true
+		return nil
+	}
+	var text string
+	switch source := source.(type) {
+	case string:
+		text = source
+	case []byte:
+		text = string(source)
+	default:
+		return fmt.Errorf("unsupported timestamp type %T", source)
+	}
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05.999999999 -0700 MST", "2006-01-02 15:04:05.999999999Z07:00"} {
+		timestamp, err := time.Parse(layout, text)
+		if err == nil {
+			value.Time = timestamp
+			value.Valid = true
+			return nil
+		}
+	}
+	return fmt.Errorf("parse timestamp %q", text)
 }
