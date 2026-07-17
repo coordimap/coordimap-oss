@@ -114,6 +114,225 @@ func NewServer(store ports.Store, runner CrawlRunner) *server.MCPServer {
 		return getRelationships(ctx, store, args.InternalID, args.Direction, args.RelationType, limit)
 	})
 
+	srv.AddTool(mcpgo.NewTool("coordimap_get_infrastructure_summary",
+		mcpgo.WithDescription("Summarize stored crawl observations; results are not live provider state."),
+		mcpgo.WithString("data_source_id"),
+	), func(ctx context.Context, request mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
+		var args struct {
+			DataSourceID string `json:"data_source_id"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return toolError(err), nil
+		}
+		var summary ports.InfrastructureSummary
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			summary, err = query.GetInfrastructureSummary(ctx, args.DataSourceID)
+			return err
+		}); err != nil {
+			return toolError(err), nil
+		}
+		return jsonResult(summary), nil
+	})
+
+	srv.AddTool(mcpgo.NewTool("coordimap_list_relationship_types",
+		mcpgo.WithDescription("List stored crawl-observation relationship kinds; results are not live provider state."),
+		mcpgo.WithString("data_source_id"),
+	), func(ctx context.Context, request mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
+		var args struct {
+			DataSourceID string `json:"data_source_id"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return toolError(err), nil
+		}
+		var relationshipTypes []ports.RelationshipTypeSummary
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			relationshipTypes, err = query.ListRelationshipTypes(ctx, args.DataSourceID)
+			return err
+		}); err != nil {
+			return toolError(err), nil
+		}
+		return jsonResult(relationshipTypes), nil
+	})
+
+	srv.AddTool(mcpgo.NewTool("coordimap_list_crawl_runs",
+		mcpgo.WithDescription("List stored crawl-run observations; results are not live provider state."),
+		mcpgo.WithString("data_source_id"),
+		mcpgo.WithNumber("limit"),
+	), func(ctx context.Context, request mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
+		var args struct {
+			DataSourceID string `json:"data_source_id"`
+			Limit        *int   `json:"limit"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return toolError(err), nil
+		}
+		limit, err := normalizedLimit(args.Limit, 25, 100)
+		if err != nil {
+			return toolError(err), nil
+		}
+		var runs []ports.CrawlRunSummary
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			runs, err = query.ListCrawlRuns(ctx, ports.CrawlRunSearch{DataSourceID: args.DataSourceID, Limit: limit})
+			return err
+		}); err != nil {
+			return toolError(err), nil
+		}
+		return jsonResult(runs), nil
+	})
+
+	srv.AddTool(mcpgo.NewTool("coordimap_get_asset_versions",
+		mcpgo.WithDescription("Get stored crawl-observation payload versions for one asset; results are not live provider state."),
+		mcpgo.WithString("internal_id", mcpgo.Required()),
+		mcpgo.WithString("type"),
+		mcpgo.WithString("data_source_id"),
+		mcpgo.WithBoolean("include_payload"),
+		mcpgo.WithNumber("limit"),
+	), func(ctx context.Context, request mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
+		var args struct {
+			InternalID     string `json:"internal_id"`
+			Type           string `json:"type"`
+			DataSourceID   string `json:"data_source_id"`
+			IncludePayload bool   `json:"include_payload"`
+			Limit          *int   `json:"limit"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return toolError(err), nil
+		}
+		asset, err := resolveAsset(ctx, store, args.InternalID, args.Type, args.DataSourceID)
+		if err != nil {
+			return toolError(err), nil
+		}
+		limit, err := normalizedLimit(args.Limit, 10, 25)
+		if err != nil {
+			return toolError(err), nil
+		}
+		var versions []ports.AssetVersion
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			versions, err = query.GetAssetVersions(ctx, ports.AssetVersionSearch{InternalID: asset.InternalID, Type: asset.Type, DataSourceID: asset.DataSourceID, Limit: limit})
+			return err
+		}); err != nil {
+			return toolError(err), nil
+		}
+		values := make([]map[string]any, 0, len(versions))
+		for _, version := range versions {
+			value, err := assetVersionValue(version, args.IncludePayload)
+			if err != nil {
+				return toolError(err), nil
+			}
+			values = append(values, value)
+		}
+		return jsonResult(values), nil
+	})
+
+	srv.AddTool(mcpgo.NewTool("coordimap_explore_topology",
+		mcpgo.WithDescription("Explore bounded stored crawl-observation topology; results are not live provider state."),
+		mcpgo.WithString("internal_id", mcpgo.Required()),
+		mcpgo.WithString("type"),
+		mcpgo.WithString("data_source_id"),
+		mcpgo.WithString("direction", mcpgo.Enum("incoming", "outgoing", "both")),
+		mcpgo.WithNumber("relation_type"),
+		mcpgo.WithNumber("max_depth"),
+		mcpgo.WithNumber("max_nodes"),
+		mcpgo.WithNumber("max_relationships"),
+	), func(ctx context.Context, request mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
+		var args struct {
+			InternalID       string `json:"internal_id"`
+			Type             string `json:"type"`
+			DataSourceID     string `json:"data_source_id"`
+			Direction        string `json:"direction"`
+			RelationType     *int   `json:"relation_type"`
+			MaxDepth         *int   `json:"max_depth"`
+			MaxNodes         *int   `json:"max_nodes"`
+			MaxRelationships *int   `json:"max_relationships"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return toolError(err), nil
+		}
+		if _, err := resolveAsset(ctx, store, args.InternalID, args.Type, args.DataSourceID); err != nil {
+			return toolError(err), nil
+		}
+		direction, err := normalizedDirection(args.Direction)
+		if err != nil {
+			return toolError(err), nil
+		}
+		depth, err := normalizedLimit(args.MaxDepth, 2, 4)
+		if err != nil {
+			return toolError(err), nil
+		}
+		nodes, err := normalizedLimit(args.MaxNodes, 100, 250)
+		if err != nil {
+			return toolError(err), nil
+		}
+		relationships, err := normalizedLimit(args.MaxRelationships, 200, 500)
+		if err != nil {
+			return toolError(err), nil
+		}
+		var topology ports.Topology
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			topology, err = query.ExploreTopology(ctx, ports.TopologySearch{InternalID: args.InternalID, DataSourceID: args.DataSourceID, RelationType: args.RelationType, Direction: direction, MaxDepth: depth, MaxNodes: nodes, MaxRelationships: relationships})
+			return err
+		}); err != nil {
+			return toolError(err), nil
+		}
+		return jsonResult(topology), nil
+	})
+
+	srv.AddTool(mcpgo.NewTool("coordimap_find_relationship_path",
+		mcpgo.WithDescription("Find one bounded shortest path in stored crawl observations; results are not live provider state."),
+		mcpgo.WithString("from_internal_id", mcpgo.Required()),
+		mcpgo.WithString("from_type"),
+		mcpgo.WithString("from_data_source_id"),
+		mcpgo.WithString("to_internal_id", mcpgo.Required()),
+		mcpgo.WithString("to_type"),
+		mcpgo.WithString("to_data_source_id"),
+		mcpgo.WithString("direction", mcpgo.Enum("incoming", "outgoing", "both")),
+		mcpgo.WithNumber("relation_type"),
+		mcpgo.WithNumber("max_hops"),
+	), func(ctx context.Context, request mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
+		var args struct {
+			FromInternalID   string `json:"from_internal_id"`
+			FromType         string `json:"from_type"`
+			FromDataSourceID string `json:"from_data_source_id"`
+			ToInternalID     string `json:"to_internal_id"`
+			ToType           string `json:"to_type"`
+			ToDataSourceID   string `json:"to_data_source_id"`
+			Direction        string `json:"direction"`
+			RelationType     *int   `json:"relation_type"`
+			MaxHops          *int   `json:"max_hops"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return toolError(err), nil
+		}
+		if _, err := resolveAsset(ctx, store, args.FromInternalID, args.FromType, args.FromDataSourceID); err != nil {
+			return toolError(err), nil
+		}
+		if _, err := resolveAsset(ctx, store, args.ToInternalID, args.ToType, args.ToDataSourceID); err != nil {
+			return toolError(err), nil
+		}
+		direction, err := normalizedDirection(args.Direction)
+		if err != nil {
+			return toolError(err), nil
+		}
+		hops, err := normalizedLimit(args.MaxHops, 6, 10)
+		if err != nil {
+			return toolError(err), nil
+		}
+		var path ports.RelationshipPath
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			path, err = query.FindRelationshipPath(ctx, ports.PathSearch{FromInternalID: args.FromInternalID, ToInternalID: args.ToInternalID, RelationType: args.RelationType, Direction: direction, MaxHops: hops})
+			return err
+		}); err != nil {
+			return toolError(err), nil
+		}
+		return jsonResult(path), nil
+	})
+
 	srv.AddTool(mcpgo.NewTool("coordimap_run_crawl",
 		mcpgo.WithDescription("Start configured crawlers, or report that they are already running."),
 		mcpgo.WithString("data_source_id"),
@@ -175,6 +394,51 @@ func NewServer(store ports.Store, runner CrawlRunner) *server.MCPServer {
 		}
 		return resourceJSON(request.Params.URI, relationships)
 	})
+	srv.AddResourceTemplate(mcpgo.NewResourceTemplate("coordimap://topology/{internal_id}", "Coordimap topology", mcpgo.WithTemplateMIMEType("application/json")), func(ctx context.Context, request mcpgo.ReadResourceRequest) ([]mcpgo.ResourceContents, error) {
+		internalID, err := resourceID(request.Params.URI, "topology")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := resolveAsset(ctx, store, internalID, "", ""); err != nil {
+			return nil, err
+		}
+		var topology ports.Topology
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			topology, err = query.ExploreTopology(ctx, ports.TopologySearch{InternalID: internalID, Direction: "both", MaxDepth: 2, MaxNodes: 100, MaxRelationships: 200})
+			return err
+		}); err != nil {
+			return nil, err
+		}
+		return resourceJSON(request.Params.URI, topology)
+	})
+	srv.AddResourceTemplate(mcpgo.NewResourceTemplate("coordimap://asset-versions/{internal_id}", "Coordimap asset versions", mcpgo.WithTemplateMIMEType("application/json")), func(ctx context.Context, request mcpgo.ReadResourceRequest) ([]mcpgo.ResourceContents, error) {
+		internalID, err := resourceID(request.Params.URI, "asset-versions")
+		if err != nil {
+			return nil, err
+		}
+		asset, err := resolveAsset(ctx, store, internalID, "", "")
+		if err != nil {
+			return nil, err
+		}
+		var versions []ports.AssetVersion
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			versions, err = query.GetAssetVersions(ctx, ports.AssetVersionSearch{InternalID: asset.InternalID, Type: asset.Type, DataSourceID: asset.DataSourceID, Limit: 10})
+			return err
+		}); err != nil {
+			return nil, err
+		}
+		values := make([]map[string]any, 0, len(versions))
+		for _, version := range versions {
+			value, err := assetVersionValue(version, false)
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, value)
+		}
+		return resourceJSON(request.Params.URI, values)
+	})
 
 	return srv
 }
@@ -233,6 +497,46 @@ func getAssetValue(ctx context.Context, store ports.Store, internalID, elementTy
 	return result, nil
 }
 
+func resolveAsset(ctx context.Context, store ports.Store, internalID, elementType, dataSourceID string) (ports.Asset, error) {
+	var assets []ports.Asset
+	if err := read(ctx, store, func(query ports.QueryRepository) error {
+		var err error
+		assets, err = query.GetAssets(ctx, internalID, elementType, dataSourceID)
+		return err
+	}); err != nil {
+		return ports.Asset{}, err
+	}
+	if len(assets) == 0 {
+		return ports.Asset{}, fmt.Errorf("asset not found")
+	}
+	if len(assets) > 1 {
+		return ports.Asset{}, fmt.Errorf("asset is ambiguous; supply type and/or data_source_id")
+	}
+	return assets[0], nil
+}
+
+func assetVersionValue(version ports.AssetVersion, includePayload bool) (map[string]any, error) {
+	result := map[string]any{
+		"hash":         version.Hash,
+		"crawl_run_id": version.CrawlRunID,
+		"first_seen":   version.FirstSeen,
+		"last_seen":    version.LastSeen,
+	}
+	if !includePayload {
+		return result, nil
+	}
+	if version.RawJSON != nil {
+		var payload any
+		if err := json.Unmarshal([]byte(*version.RawJSON), &payload); err != nil {
+			return nil, fmt.Errorf("decode stored JSON version: %w", err)
+		}
+		result["raw_json"] = payload
+		return result, nil
+	}
+	result["raw_data_base64"] = base64.StdEncoding.EncodeToString(version.RawData)
+	return result, nil
+}
+
 func getRelationships(ctx context.Context, store ports.Store, internalID, direction string, relationType *int, limit int) (*mcpgo.CallToolResult, error) {
 	var relationships []ports.Relationship
 	if err := read(ctx, store, func(query ports.QueryRepository) error {
@@ -262,6 +566,16 @@ func normalizedLimit(limit *int, defaultLimit, maxLimit int) (int, error) {
 		return maxLimit, nil
 	}
 	return *limit, nil
+}
+
+func normalizedDirection(direction string) (string, error) {
+	if direction == "" {
+		return "both", nil
+	}
+	if direction != "incoming" && direction != "outgoing" && direction != "both" {
+		return "", fmt.Errorf("direction must be incoming, outgoing, or both")
+	}
+	return direction, nil
 }
 
 func jsonResult(value any) *mcpgo.CallToolResult {

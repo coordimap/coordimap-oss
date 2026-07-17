@@ -126,6 +126,8 @@ func testQueryRepository(t *testing.T, store ports.Store) {
 	binaryID := prefix + "-binary"
 	now := time.Now().UTC().Truncate(time.Microsecond)
 
+	disconnectedID := prefix + "-disconnected"
+	unresolvedID := prefix + "-unresolved"
 	assetA, err := utils.CreateElement(map[string]string{"kind": "primary"}, prefix+" Alpha Asset", assetAID, "test.asset", agent.StatusGreen, "v1", now.Add(-2*time.Minute))
 	if err != nil {
 		t.Fatalf("CreateElement(assetA) error = %v", err)
@@ -152,6 +154,14 @@ func testQueryRepository(t *testing.T, store ports.Store) {
 	if err != nil {
 		t.Fatalf("CreateElement(assetB) error = %v", err)
 	}
+	disconnected, err := utils.CreateElement(map[string]string{"kind": "disconnected"}, prefix+" Disconnected Asset", disconnectedID, "test.asset", agent.StatusNoStatus, "v1", now)
+	if err != nil {
+		t.Fatalf("CreateElement(disconnected) error = %v", err)
+	}
+	unresolvedRelationship, err := utils.CreateRelationship(assetAID, unresolvedID, "flows_to", agent.GenericFlowTypeRelation, now.Add(-10*time.Second))
+	if err != nil {
+		t.Fatalf("CreateRelationship(unresolved) error = %v", err)
+	}
 
 	assetAUpdated, err := utils.CreateElement(map[string]string{"kind": "updated"}, prefix+" Alpha Asset", assetAID, "test.asset", agent.StatusGreen, "v2", now.Add(-30*time.Second))
 	if err != nil {
@@ -159,7 +169,7 @@ func testQueryRepository(t *testing.T, store ports.Store) {
 	}
 
 	service := ingest.NewService(store)
-	if err := service.StoreCrawl(ctx, crawlData(dataSourceA, now.Add(-time.Minute), assetA, binary, localRelationship, crossRelationship)); err != nil {
+	if err := service.StoreCrawl(ctx, crawlData(dataSourceA, now.Add(-time.Minute), assetA, binary, disconnected, localRelationship, crossRelationship, unresolvedRelationship)); err != nil {
 		t.Fatalf("StoreCrawl(source A) error = %v", err)
 	}
 	if err := service.StoreCrawl(ctx, crawlData(dataSourceB, now, assetB)); err != nil {
@@ -217,10 +227,16 @@ func testQueryRepository(t *testing.T, store ports.Store) {
 		if err != nil {
 			return err
 		}
-		if len(relationships) != 2 {
-			t.Errorf("GetRelationships(outgoing) count = %d, want 2", len(relationships))
+		if len(relationships) != 3 {
+			t.Errorf("GetRelationships(outgoing) count = %d, want 3", len(relationships))
 		}
 		for _, relationship := range relationships {
+			if relationship.DestinationInternalID == unresolvedID {
+				if relationship.DestinationName != nil || relationship.DestinationType != nil {
+					t.Errorf("GetRelationships() resolved unknown endpoint = %#v", relationship)
+				}
+				continue
+			}
 			if relationship.SourceName == nil || relationship.SourceType == nil || relationship.DestinationName == nil || relationship.DestinationType == nil {
 				t.Errorf("GetRelationships() unresolved endpoint = %#v", relationship)
 			}
@@ -231,8 +247,77 @@ func testQueryRepository(t *testing.T, store ports.Store) {
 		if err != nil {
 			return err
 		}
-		if len(relationships) != 1 || relationships[0].DestinationInternalID != assetBID {
-			t.Errorf("GetRelationships(type) = %#v, want cross-source relationship to %q", relationships, assetBID)
+		if len(relationships) != 2 {
+			t.Errorf("GetRelationships(type) = %#v, want two generic-flow relationships", relationships)
+		}
+
+		summary, err := repos.Query().GetInfrastructureSummary(ctx, "")
+		if err != nil {
+			return err
+		}
+		if len(summary.Assets) != 4 || len(summary.Relationships) != 2 {
+			t.Errorf("GetInfrastructureSummary() = %#v, want four asset groups and two relationship groups", summary)
+		}
+
+		relationshipTypes, err := repos.Query().ListRelationshipTypes(ctx, dataSourceA)
+		if err != nil {
+			return err
+		}
+		if len(relationshipTypes) != 2 || relationshipTypes[0].Count+relationshipTypes[1].Count != 3 {
+			t.Errorf("ListRelationshipTypes() = %#v, want three observed relationships across two types", relationshipTypes)
+		}
+
+		runs, err := repos.Query().ListCrawlRuns(ctx, ports.CrawlRunSearch{DataSourceID: dataSourceA, Limit: 100})
+		if err != nil {
+			return err
+		}
+		if len(runs) != 2 || runs[0].StartedAt.Before(runs[1].StartedAt) {
+			t.Errorf("ListCrawlRuns() = %#v, want newest-first source A runs", runs)
+		}
+
+		versions, err := repos.Query().GetAssetVersions(ctx, ports.AssetVersionSearch{InternalID: assetAID, Type: "test.asset", DataSourceID: dataSourceA, Limit: 25})
+		if err != nil {
+			return err
+		}
+		if len(versions) != 2 || versions[0].Hash != assetAUpdated.Hash || versions[0].RawJSON == nil {
+			t.Errorf("GetAssetVersions() = %#v, want newest JSON version first", versions)
+		}
+
+		topology, err := repos.Query().ExploreTopology(ctx, ports.TopologySearch{InternalID: assetAID, Direction: "outgoing", MaxDepth: 2, MaxNodes: 100, MaxRelationships: 200})
+		if err != nil {
+			return err
+		}
+		if len(topology.Nodes) != 4 || len(topology.Relationships) != 3 || topology.Truncated {
+			t.Errorf("ExploreTopology() = %#v, want complete topology including unresolved endpoint", topology)
+		}
+		truncatedTopology, err := repos.Query().ExploreTopology(ctx, ports.TopologySearch{InternalID: assetAID, Direction: "outgoing", MaxDepth: 2, MaxNodes: 2, MaxRelationships: 200})
+		if err != nil {
+			return err
+		}
+		if !truncatedTopology.Truncated {
+			t.Errorf("ExploreTopology(max_nodes) = %#v, want truncated result", truncatedTopology)
+		}
+
+		path, err := repos.Query().FindRelationshipPath(ctx, ports.PathSearch{FromInternalID: binaryID, ToInternalID: assetBID, Direction: "both", MaxHops: 2})
+		if err != nil {
+			return err
+		}
+		if !path.Found || len(path.Relationships) != 2 || path.Relationships[0].DestinationInternalID != binaryID {
+			t.Errorf("FindRelationshipPath() = %#v, want deterministic two-hop path", path)
+		}
+		noPath, err := repos.Query().FindRelationshipPath(ctx, ports.PathSearch{FromInternalID: disconnectedID, ToInternalID: assetBID, Direction: "both", MaxHops: 2})
+		if err != nil {
+			return err
+		}
+		if noPath.Found || noPath.Truncated {
+			t.Errorf("FindRelationshipPath(disconnected) = %#v, want a complete no-path result", noPath)
+		}
+		boundedPath, err := repos.Query().FindRelationshipPath(ctx, ports.PathSearch{FromInternalID: binaryID, ToInternalID: assetBID, Direction: "both", MaxHops: 1})
+		if err != nil {
+			return err
+		}
+		if boundedPath.Found || !boundedPath.Truncated {
+			t.Errorf("FindRelationshipPath(max_hops) = %#v, want truncated no-path result", boundedPath)
 		}
 		return nil
 	}); err != nil {

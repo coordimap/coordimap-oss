@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/coordimap/agent/internal/app/ingest"
+	"github.com/coordimap/agent/internal/app/ports"
 	"github.com/coordimap/agent/internal/storage/sqlite"
 	"github.com/coordimap/agent/pkg/domain/agent"
 	"github.com/coordimap/agent/pkg/utils"
@@ -42,15 +43,49 @@ func TestServerToolsAndResources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	downstreamRelationship, err := utils.CreateRelationship("binary-1", "database-1", "connects_to", agent.GenericFlowTypeRelation, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unresolvedRelationship, err := utils.CreateRelationship("binary-1", "unresolved-1", "connects_to", agent.GenericFlowTypeRelation, now)
+	if err != nil {
+		t.Fatal(err)
+	}
 	binaryAsset := &agent.Element{ID: "binary-1", Name: "Binary Asset", Type: "test.binary", Hash: "binary-hash", Data: []byte{0, 1, 2}, RetrievedAt: now, Version: "v1", Status: agent.StatusNoStatus}
+	databaseAsset := &agent.Element{ID: "database-1", Name: "Database Asset", Type: "test.database", Hash: "database-hash", Data: []byte(`{"role":"database"}`), IsJSONData: true, RetrievedAt: now, Version: "v1", Status: agent.StatusGreen}
+	disconnectedAsset := &agent.Element{ID: "disconnected-1", Name: "Disconnected Asset", Type: "test.asset", Hash: "disconnected-hash", Data: []byte(`{"role":"disconnected"}`), IsJSONData: true, RetrievedAt: now, Version: "v1", Status: agent.StatusNoStatus}
 	ambiguousOne := &agent.Element{ID: "ambiguous", Name: "Ambiguous", Type: "test.one", Hash: "one", Data: []byte(`{"one":true}`), IsJSONData: true, RetrievedAt: now, Version: "v1", Status: agent.StatusNoStatus}
 	ambiguousTwo := &agent.Element{ID: "ambiguous", Name: "Ambiguous", Type: "test.two", Hash: "two", Data: []byte(`{"two":true}`), IsJSONData: true, RetrievedAt: now, Version: "v1", Status: agent.StatusNoStatus}
 	if err := ingest.NewService(store).StoreCrawl(ctx, agent.CloudCrawlData{
 		DataSource:  agent.DataSource{DataSourceID: "test-ds", Info: agent.DataSourceInfo{Name: "Test", Desc: "Test", Type: "test"}},
-		CrawledData: agent.CrawledData{Data: []*agent.Element{jsonAsset, binaryAsset, relationship, ambiguousOne, ambiguousTwo}},
+		CrawledData: agent.CrawledData{Data: []*agent.Element{jsonAsset, binaryAsset, databaseAsset, disconnectedAsset, relationship, downstreamRelationship, unresolvedRelationship, ambiguousOne, ambiguousTwo}},
 		Timestamp:   now,
 	}); err != nil {
 		t.Fatalf("StoreCrawl() error = %v", err)
+	}
+	jsonAssetUpdated, err := utils.CreateElement(map[string]string{"kind": "updated"}, "Seed Asset", "asset-1", "test.asset", agent.StatusGreen, "v2", now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ingest.NewService(store).StoreCrawl(ctx, agent.CloudCrawlData{
+		DataSource:  agent.DataSource{DataSourceID: "test-ds", Info: agent.DataSourceInfo{Name: "Test", Desc: "Test", Type: "test"}},
+		CrawledData: agent.CrawledData{Data: []*agent.Element{jsonAssetUpdated}},
+		Timestamp:   now.Add(time.Second),
+	}); err != nil {
+		t.Fatalf("StoreCrawl(updated) error = %v", err)
+	}
+	failure := "fixture crawl failure"
+	if err := store.WithTx(ctx, func(ctx context.Context, repos ports.Repositories) error {
+		return repos.CrawlRuns().Insert(ctx, ports.CrawlRun{
+			ID:              "failed-run",
+			DataSourceID:    "test-ds",
+			CrawlInternalID: "fixture-failed",
+			StartedAt:       now.Add(2 * time.Second),
+			CompletedAt:     now.Add(2 * time.Second),
+			Error:           &failure,
+		})
+	}); err != nil {
+		t.Fatalf("Insert(failed crawl run) error = %v", err)
 	}
 
 	srv := NewServer(store, testRunner{runID: "run-1"})
@@ -63,10 +98,26 @@ func TestServerToolsAndResources(t *testing.T) {
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_get_relationships", "arguments": map[string]any{"internal_id": "asset-1", "direction": "outgoing"}}, `binary-1`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_run_crawl", "arguments": map[string]any{}}, `started`)
 	assertResponseContains(t, srv, "resources/read", map[string]any{"uri": "coordimap://relationships/asset-1"}, `binary-1`)
+	assertResponseContains(t, srv, "tools/list", nil, `coordimap_find_relationship_path`)
+	assertResponseContains(t, srv, "resources/templates/list", nil, `coordimap://topology/{internal_id}`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_get_infrastructure_summary", "arguments": map[string]any{}}, `relationships`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_list_relationship_types", "arguments": map[string]any{}}, `contains`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_list_crawl_runs", "arguments": map[string]any{}}, `test-ds`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_list_crawl_runs", "arguments": map[string]any{}}, `fixture crawl failure`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_get_asset_versions", "arguments": map[string]any{"internal_id": "asset-1", "include_payload": true}}, `updated`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_explore_topology", "arguments": map[string]any{"internal_id": "asset-1", "direction": "outgoing"}}, `unresolved-1`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_explore_topology", "arguments": map[string]any{"internal_id": "asset-1", "direction": "outgoing", "max_nodes": 2}}, `\"truncated\":true`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_find_relationship_path", "arguments": map[string]any{"from_internal_id": "asset-1", "to_internal_id": "database-1"}}, `\"found\":true`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_find_relationship_path", "arguments": map[string]any{"from_internal_id": "asset-1", "to_internal_id": "disconnected-1"}}, `\"found\":false`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_get_asset_versions", "arguments": map[string]any{"internal_id": "binary-1", "include_payload": true}}, `AAEC`)
+	assertResponseContains(t, srv, "resources/read", map[string]any{"uri": "coordimap://topology/asset-1"}, `database-1`)
+	assertResponseContains(t, srv, "resources/read", map[string]any{"uri": "coordimap://asset-versions/asset-1"}, `crawl_run_id`)
 
 	assertToolError(t, srv, map[string]any{"name": "coordimap_get_asset", "arguments": map[string]any{"internal_id": "ambiguous"}}, "asset is ambiguous; supply type and/or data_source_id")
 	assertToolError(t, srv, map[string]any{"name": "coordimap_get_relationships", "arguments": map[string]any{"internal_id": "asset-1", "direction": "sideways"}}, "isError")
 	assertToolError(t, srv, map[string]any{"name": "coordimap_search_assets", "arguments": map[string]any{"query": "seed", "limit": 0}}, "limit must be at least 1")
+	assertToolError(t, srv, map[string]any{"name": "coordimap_explore_topology", "arguments": map[string]any{"internal_id": "asset-1", "max_depth": 0}}, "limit must be at least 1")
+	assertToolError(t, srv, map[string]any{"name": "coordimap_find_relationship_path", "arguments": map[string]any{"from_internal_id": "asset-1", "to_internal_id": "binary-1", "direction": "sideways"}}, "isError")
 }
 
 func assertResponseContains(t *testing.T, srv interface {
