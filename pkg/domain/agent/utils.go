@@ -20,9 +20,6 @@ func GetFlowTypeRelationLabel(flowType int) string {
 	case KubernetesIstioFlowTypeRelation:
 		return "kubernetes_istio_flow"
 
-	case EBPFFlowTypeRelation:
-		return "ebpf_flow"
-
 	default:
 		return "unknown_relation"
 	}

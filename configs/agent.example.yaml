@@ -251,22 +251,6 @@ coordimap:
     #     - name: crawl_interval
     #       value: 30s
 
-    # # --- eBPF Flows Data Source ---
-    # # Captures runtime network flows with eBPF.
-    # - type: flows
-    #   id: ebpf-flows
-    #   config:
-    #     # Use "all" or a specific interface name like "eth0".
-    #     - name: interface_name
-    #       value: all
-    #     # Valid values: "server" or "kubernetes".
-    #     - name: deployedAt
-    #       value: kubernetes
-    #     # Required when deployedAt is "kubernetes".
-    #     - name: external_mappings
-    #       value: "*@6f5f56e3-0123-4567-89ab-6c8f1e2a0cde"
-    #     - name: crawl_interval
-    #       value: 30s
 
     # # --- MongoDB Data Source ---
     # # Collects metadata from a MongoDB instance.

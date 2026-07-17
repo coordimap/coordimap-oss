@@ -6,13 +6,11 @@ This document is derived from `GEMINI.md`, corrected against the current reposit
 
 Coordimap Agent is a Go infrastructure crawler that gathers inventory, configuration, and network-flow data from cloud providers, databases, Kubernetes, and flow sources.
 
-- **Multi-source crawling:** AWS, GCP, Kubernetes, PostgreSQL, MariaDB/MySQL, MongoDB, and flow logs.
-- **eBPF integration:** network-flow capture through eBPF; generating probes requires `bpftool`, `clang`, `llvm`, `libbpf-dev`, and kernel headers.
+- **Multi-source crawling:** AWS, GCP, Kubernetes, PostgreSQL, MariaDB/MySQL, MongoDB, and cloud flow logs.
 - **Factory-based modular architecture:** integrations are selected through a factory so new crawlers can be added without changing existing crawler APIs.
 
 ### Build and run
 
-- Generate eBPF artifacts: `go generate ./internal/cloud/flows`
 - Build: `go build -o agent cmd/agent/main.go`
 - Test: `go test ./...`
 - Build the Docker image: `docker build -t coordimap-agent .`
@@ -47,7 +45,7 @@ Keep existing crawler packages as producers. Do not rewrite AWS, GCP, Kubernetes
 
 The portable local schema is inspired by `/home/ermalguni/MEGA/devops/asset-repository/migrations`, especially `01_add_tables.up.sql` (`data_source_infos`, `asset_types`, `assets`, `raw_assets`, `relation_types`, `asset_relations`, and first/last-seen timestamps). `27_raw_asset_status_and_version.up.sql` motivates `version` and `status`; use `TEXT CHECK(status IN ('NoStatus','Green','Orange','Red'))` rather than a PostgreSQL enum.
 
-`34_add_agent_relation_types.up.sql` and `pkg/domain/agent/types.go` define seeded relation IDs: `3 parent_child`, `4 er`, `100 generic_flow`, `101 gcp_network_flow`, `102 kubernetes_retina_flow`, `103 kubernetes_istio_flow`, `104 ebpf_flow`, and `105 aws_network_flow`.
+`34_add_agent_relation_types.up.sql` and `pkg/domain/agent/types.go` define seeded relation IDs: `3 parent_child`, `4 er`, `100 generic_flow`, `101 gcp_network_flow`, `102 kubernetes_retina_flow`, `103 kubernetes_istio_flow`, and `105 aws_network_flow`.
 
 `33_diagram_spec_and_flows.up.sql` motivates `is_active`, `source_kind`, and relationship observation timestamps. Do not copy tenant columns, PostgreSQL `JSONB`, `tsrange`, exclusion constraints, triggers, or functions.
 

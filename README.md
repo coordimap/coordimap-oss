@@ -50,46 +50,6 @@ Once the image is built, you can run the `coordimap-agent` container with the fo
 docker run coordimap-agent
 ```
 
-## eBPF Flow Crawler
-
-`coordimap-agent` includes an eBPF-based flow crawler that can be used to monitor network traffic in a Kubernetes environment. This crawler uses eBPF to capture network flows and map the connections between services and pods.
-
-### eBPF Dependencies
-
-To use the eBPF flow crawler, you will need to have the following additional dependencies installed on your system:
-
-- `clang`
-- `llvm`
-- `bpftool`
-
-### eBPF Build Step
-
-Before building `coordimap-agent`, you will need to run the following command to generate the eBPF Go files:
-
-```
-go generate ./internal/cloud/flows
-```
-
-This command will compile the eBPF C code and generate the necessary Go files to interact with it.
-
-### eBPF Configuration
-
-To enable the eBPF flow crawler, you will need to add the following configuration to your `config.yaml` file:
-
-```yaml
-- type: flows
-  id: "ebpf_flows"
-  config:
-    - name: crawl_interval
-      value: 30s
-    - name: deployedAt
-      value: "kubernetes" # can be "kubernetes" or "server"
-    - name: interface_name
-      value: "all" # can be "all" or a specific interface like "eth0"
-    - name: external_mappings
-      value: "*@your_k8s_cluster_uid" # required when deployedAt is "kubernetes"
-```
-
 ## Configuration
 
 `coordimap-agent` is configured using a YAML file. By default, the application looks for a `config.yaml` file in the same directory as the executable. You can specify a different configuration file using the `--config` flag or the `COORDIMAP_CONFIG_PATH` environment variable.

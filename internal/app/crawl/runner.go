@@ -106,7 +106,6 @@ func ValidateKubernetesScopeMappings(allDataSources map[string][]*agent.DataSour
 	}
 
 	validationErrors := validateExternalMappingsForKubernetesScopes(allDataSources[integrations.INTEGRATION_GCP], integrations.INTEGRATION_GCP, kubeDataSourceIDToClusterUID)
-	validationErrors = append(validationErrors, validateExternalMappingsForKubernetesScopes(allDataSources[integrations.INTEGRATION_EBPF_FLOWS], integrations.INTEGRATION_EBPF_FLOWS, kubeDataSourceIDToClusterUID)...)
 	if len(validationErrors) == 0 {
 		return nil
 	}
@@ -117,9 +116,6 @@ func validateExternalMappingsForKubernetesScopes(dataSources []*agent.DataSource
 	validationErrors := []string{}
 	for _, dataSource := range dataSources {
 		if integrationName == integrations.INTEGRATION_GCP && dataSourceConfigValue(dataSource, "gcp_flows") != "true" {
-			continue
-		}
-		if integrationName == integrations.INTEGRATION_EBPF_FLOWS && dataSourceConfigValue(dataSource, "deployedAt") != "kubernetes" {
 			continue
 		}
 		rawMappings := dataSourceConfigValue(dataSource, "external_mappings")

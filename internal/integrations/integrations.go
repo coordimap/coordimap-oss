@@ -3,7 +3,6 @@ package integrations
 import (
 	"fmt"
 
-	"github.com/coordimap/agent/internal/cloud/flows"
 	"github.com/coordimap/agent/internal/cloud/gcp"
 	"github.com/coordimap/agent/internal/integrations/aws"
 	awsflowlogs "github.com/coordimap/agent/internal/integrations/aws_flow_logs"
@@ -40,9 +39,6 @@ func IntegrationsFactory(name string, dataSource *agent.DataSource, outChannel c
 
 	case INTEGRATION_GCP:
 		return gcp.NewGCPCrawler(dataSource, outChannel)
-
-	case INTEGRATION_EBPF_FLOWS:
-		return flows.NewFlowsCrawler(dataSource, outChannel)
 
 	default:
 		return nil, fmt.Errorf("unknown integration %s", name)
