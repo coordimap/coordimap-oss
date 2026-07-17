@@ -1,5 +1,4 @@
 coordimap:
-  api_key: ${COORDIMAP_API_KEY}
   database:
     driver: sqlite
     connection_string: file:coordimap.db

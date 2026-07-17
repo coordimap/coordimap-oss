@@ -25,7 +25,6 @@ func TestNewYamlFileConfig(t *testing.T) {
 
 	content := []byte(`
 coordimap:
-  api_key: test_key
   data_sources: []
 `)
 	if _, err := tmpfile.Write(content); err != nil {
@@ -79,7 +78,6 @@ func TestNewYamlStringConfig(t *testing.T) {
 			name: "valid config",
 			want: &configuration.CoordimapConfig{
 				Coordimap: configuration.Coordimap{
-					APIKey: "123",
 					DataSources: []configuration.CoordimapConfigDataSource{
 						{
 							Type: "aws",
@@ -118,7 +116,6 @@ func TestNewYamlStringConfig(t *testing.T) {
 			},
 			wantErr: false,
 			args: args{yamlContent: `coordimap:
-  api_key: 123
   data_sources:
     - type: aws
       id: aws1
@@ -172,7 +169,6 @@ func TestNewYamlStringConfig(t *testing.T) {
 
 func TestGetAllDataSourcesDatasourceLocalMetricRules(t *testing.T) {
 	runtimeConfig, errRuntimeConfig := configuration.NewYamlFileConfig(createTempConfigFile(t, `coordimap:
-  api_key: 123
   data_sources:
     - type: kubernetes
       id: kube-1
@@ -246,7 +242,6 @@ func TestGetAllDataSourcesDatasourceLocalMetricRules(t *testing.T) {
 
 func TestNewYamlStringConfigMetricRulesUnsupportedDataSource(t *testing.T) {
 	_, errConfig := configuration.NewYamlStringConfig(`coordimap:
-  api_key: 123
   data_sources:
     - type: postgres
       id: pg-1
@@ -270,7 +265,6 @@ func TestNewYamlStringConfigMetricRulesUnsupportedDataSource(t *testing.T) {
 
 func TestNewYamlStringConfigMetricRulesModeValidation(t *testing.T) {
 	_, errConfig := configuration.NewYamlStringConfig(`coordimap:
-  api_key: 123
   data_sources:
     - type: kubernetes
       id: kube-1
@@ -304,13 +298,11 @@ func TestGetDatabaseConfig(t *testing.T) {
 		{
 			name: "absent database configuration",
 			yaml: `coordimap:
-  api_key: test-key
   data_sources: []`,
 		},
 		{
 			name: "valid SQLite configuration",
 			yaml: `coordimap:
-  api_key: test-key
   database:
     driver: sqlite
     connection_string: file:coordimap.db
@@ -323,7 +315,6 @@ func TestGetDatabaseConfig(t *testing.T) {
 		{
 			name: "valid PostgreSQL configuration",
 			yaml: `coordimap:
-  api_key: test-key
   database:
     driver: postgres
     connection_string: postgres://coordimap:password@localhost:5432/coordimap?sslmode=disable
@@ -336,7 +327,6 @@ func TestGetDatabaseConfig(t *testing.T) {
 		{
 			name: "invalid driver",
 			yaml: `coordimap:
-  api_key: test-key
   database:
     driver: mysql
     connection_string: mysql://localhost/coordimap
@@ -346,7 +336,6 @@ func TestGetDatabaseConfig(t *testing.T) {
 		{
 			name: "missing connection string",
 			yaml: `coordimap:
-  api_key: test-key
   database:
     driver: sqlite
   data_sources: []`,
@@ -355,7 +344,6 @@ func TestGetDatabaseConfig(t *testing.T) {
 		{
 			name: "environment connection string",
 			yaml: `coordimap:
-  api_key: test-key
   database:
     driver: postgres
     connection_string: ${COORDIMAP_DATABASE_URL}

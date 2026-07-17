@@ -19,7 +19,6 @@ To get started with `coordimap-agent`, you\'ll need to have Go installed on your
 - [github.com/gorilla/mux](http://github.com/gorilla/mux)
 - [github.com/lib/pq](http://github.com/lib/pq)
 - [modernc.org/sqlite](https://modernc.org/sqlite)
-- [github.com/parnurzeal/gorequest](http://github.com/parnurzeal/gorequest)
 - [github.com/prometheus/client_golang](http://github.com/prometheus/client_golang)
 - [github.com/prometheus/common](http://github.com/prometheus/common)
 - [github.com/rs/zerolog](http://github.com/rs/zerolog)
@@ -101,7 +100,6 @@ The configuration file specifies the data sources to be crawled. Here is an exam
 
 ```yaml
 coordimap:
-  api_key: ${COORDIMAP_API_KEY}
   data_sources:
     - type: aws
       id: aws-production
@@ -128,15 +126,13 @@ coordimap:
           value: 30s
 ```
 
-### Optional local storage
-
+### Local storage
 Set `coordimap.database.driver` to `sqlite` or `postgres` and provide
 `coordimap.database.connection_string` to persist deduplicated crawl batches
-locally. When the section is omitted, the agent retains collector-only behavior.
+locally. Local storage is required; the agent does not send crawled data to an external collector.
 
 ```yaml
 coordimap:
-  api_key: ${COORDIMAP_API_KEY}
   database:
     driver: sqlite
     connection_string: file:coordimap.db
@@ -155,8 +151,7 @@ coordimap:
 ### Local MCP server
 
 `coordimap-local` requires `coordimap.database` and serves all MCP protocol traffic over
-stdio. It does not require `coordimap.api_key`, unlike `coordimap-agent`; do not write
-secrets or data payloads to stdout outside the JSON-RPC protocol.
+stdio; do not write secrets or data payloads to stdout outside the JSON-RPC protocol.
 
 Register the executable with an MCP client:
 
@@ -183,7 +178,6 @@ Here are the supported data sources and their sample configurations:
 
 ```yaml
 coordimap:
-  api_key: ${COORDIMAP_API_KEY}
   data_sources:
     - type: gcp
       id: gcp_id_123
@@ -549,7 +543,6 @@ Example:
 
 ```yaml
 coordimap:
-  api_key: ${COORDIMAP_API_KEY}
   data_sources:
     - type: kubernetes
       id: kube-prod

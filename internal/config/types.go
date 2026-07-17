@@ -8,9 +8,7 @@ import (
 // Config defines the interface for retrieving configuration data.
 type Config interface {
 	GetAllDataSources() map[string][]*agent.DataSource
-	GetCoordimapKey() (string, error)
 	GetDatabaseConfig() (*DatabaseConfig, error)
-	GetSkipFields() []string
 }
 
 // CoordimapConfigNameValueConfig represents a name-value pair configuration item.
@@ -36,9 +34,7 @@ type DatabaseConfig struct {
 
 // Coordimap holds the configuration specific to the Coordimap integration.
 type Coordimap struct {
-	APIKey      string                      `yaml:"api_key"`
 	Database    *DatabaseConfig             `yaml:"database,omitempty"`
-	SkipFields  []string                    `yaml:"skip_fields"`
 	DataSources []CoordimapConfigDataSource `yaml:"data_sources"`
 }
 

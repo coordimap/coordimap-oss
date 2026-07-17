@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -134,32 +133,6 @@ func CreateRelationship(sourceID, destinationID, relationshipType string, relati
 	}
 
 	return relationshipWrapperElem, nil
-}
-
-func CleanUpDataSource(inputDS *agent.DataSource, skipFields []string) *agent.DataSource {
-	var cleanedDataSource agent.DataSource
-
-	cleanedDataSource.Info.Name = inputDS.Info.Name
-	cleanedDataSource.Info.Type = inputDS.Info.Type
-	cleanedDataSource.Info.Desc = inputDS.Info.Desc
-	cleanedDataSource.DataSourceID = inputDS.DataSourceID
-
-	for _, dsConfigKeyValue := range inputDS.Config.ValuePairs {
-		if slices.Contains(skipFields, strings.ToLower(dsConfigKeyValue.Key)) {
-			continue
-		}
-
-		cleanedDataSource.Config.ValuePairs = append(cleanedDataSource.Config.ValuePairs, agent.KeyValue{
-			Key:   dsConfigKeyValue.Key,
-			Value: dsConfigKeyValue.Value,
-		})
-	}
-
-	if len(inputDS.Config.MetricRules) > 0 {
-		cleanedDataSource.Config.MetricRules = append(cleanedDataSource.Config.MetricRules, inputDS.Config.MetricRules...)
-	}
-
-	return &cleanedDataSource
 }
 
 func AddRelationship(existingRelationships *[]*agent.Element, source, destination string, relationType int, crawlTime time.Time) {

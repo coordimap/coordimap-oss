@@ -18,19 +18,6 @@ type yamlConfig struct {
 	yamlConfigPath string
 }
 
-func (coordimapConfig *yamlConfig) GetCoordimapKey() (string, error) {
-	if coordimapConfig.parsedConfig == nil {
-		return "", fmt.Errorf("configuration is nil")
-	}
-
-	value, err := utils.LoadValueFromEnvConfig(coordimapConfig.parsedConfig.APIKey)
-	if err != nil {
-		return "", err
-	}
-
-	return value, nil
-}
-
 func (coordimapConfig *yamlConfig) GetDatabaseConfig() (*DatabaseConfig, error) {
 	if coordimapConfig.parsedConfig == nil || coordimapConfig.parsedConfig.Database == nil {
 		return nil, nil
@@ -45,14 +32,6 @@ func (coordimapConfig *yamlConfig) GetDatabaseConfig() (*DatabaseConfig, error) 
 		Driver:           coordimapConfig.parsedConfig.Database.Driver,
 		ConnectionString: connectionString,
 	}, nil
-}
-
-func (coordimapConfig *yamlConfig) GetSkipFields() []string {
-	if coordimapConfig.parsedConfig == nil {
-		return []string{}
-	}
-
-	return coordimapConfig.parsedConfig.SkipFields
 }
 
 func (coordimapConfig *yamlConfig) GetAllDataSources() map[string][]*agent.DataSource {
@@ -130,7 +109,6 @@ func NewYamlStringConfig(yamlContent string) (*CoordimapConfig, error) {
 	if errorUnmarshal := yaml.Unmarshal([]byte(yamlContent), &config); errorUnmarshal != nil {
 		return nil, fmt.Errorf("failed to unmarshal yaml: %w", errorUnmarshal)
 	}
-
 
 	if config.Coordimap.Database != nil {
 		if config.Coordimap.Database.Driver != "sqlite" && config.Coordimap.Database.Driver != "postgres" {

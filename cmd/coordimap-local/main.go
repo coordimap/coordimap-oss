@@ -10,7 +10,6 @@ import (
 	"github.com/coordimap/agent/internal/mcp"
 	"github.com/coordimap/agent/internal/storage"
 	"github.com/coordimap/agent/pkg/domain/agent"
-	"github.com/coordimap/agent/pkg/utils"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -85,10 +84,8 @@ func storeCrawls(config configuration.Config, service *ingest.Service, sender <-
 		if dedupResult.DroppedAssetDuplicates > 0 || dedupResult.DroppedRelDuplicates > 0 || dedupResult.ConflictCount > 0 {
 			log.Info().Str("DataSourceID", crawledData.DataSource.DataSourceID).Int("InputCount", dedupResult.InputCount).Int("OutputCount", dedupResult.OutputCount).Int("DroppedAssetDuplicates", dedupResult.DroppedAssetDuplicates).Int("DroppedRelationshipDuplicates", dedupResult.DroppedRelDuplicates).Int("ConflictCount", dedupResult.ConflictCount).Msg("Deduplicated crawled data before storing locally")
 		}
-		sanitized := *crawledData
-		sanitized.DataSource = *utils.CleanUpDataSource(&crawledData.DataSource, config.GetSkipFields())
-		if err := service.StoreCrawl(context.Background(), sanitized); err != nil {
-			log.Error().Err(err).Str("DataSourceID", sanitized.DataSource.DataSourceID).Msg("Could not store crawled data locally")
+		if err := service.StoreCrawl(context.Background(), *crawledData); err != nil {
+			log.Error().Err(err).Str("DataSourceID", crawledData.DataSource.DataSourceID).Msg("Could not store crawled data locally")
 		}
 	}
 }

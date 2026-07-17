@@ -1,19 +1,13 @@
 coordimap:
-  # The API Key used to authenticate the agent with the Coordimap platform.
-  # You can provide the key directly as a string, or reference an environment variable
-  # using the ${VAR_NAME} syntax.
-  api_key: ${COORDIMAP_API_KEY}
-
-  # Optional local storage for deduplicated crawled elements. When omitted,
-  # the agent keeps its current collector-only behavior.
-  # database:
-  #   # Supported values: sqlite, postgres
-  #   driver: sqlite
-  #   # SQLite example:
-  #   connection_string: file:coordimap.db
-  #   # PostgreSQL example:
-  #   # driver: postgres
-  #   # connection_string: ${COORDIMAP_DATABASE_URL}
+  # Local storage for deduplicated crawled elements is required.
+  # Supported values: sqlite, postgres
+  database:
+    # SQLite example:
+    driver: sqlite
+    connection_string: file:coordimap.db
+    # PostgreSQL example:
+    # driver: postgres
+    # connection_string: ${COORDIMAP_DATABASE_URL}
 
   # coordimap-local requires this database block and serves MCP only over stdio.
   # Register it with your MCP client using:
