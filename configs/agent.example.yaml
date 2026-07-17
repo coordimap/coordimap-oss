@@ -1,0 +1,272 @@
+coordimap:
+  # The API Key used to authenticate the agent with the Coordimap platform.
+  # You can provide the key directly as a string, or reference an environment variable
+  # using the ${VAR_NAME} syntax.
+  api_key: ${COORDIMAP_API_KEY}
+
+  # A list of data sources that the agent will collect data from.
+  # You can configure multiple data sources of different types here.
+  # Uncomment the sections below to enable specific data sources.
+  data_sources:
+    # # --- AWS Data Source ---
+    # # Collects inventory and configuration data from an AWS account.
+    # - type: aws
+    #   id: aws-production
+    #   config:
+    #     - name: scope_id
+    #       value: your-aws-account-id
+    #     # Enable or disable policy configuration collection (values: "true", "false")
+    #     - name: policy_config
+    #       value: "true"
+    #
+    #     # AWS Credentials.
+    #     # It is recommended to use environment variables or IAM roles if running on EC2/EKS.
+    #     - name: access_key_id
+    #       value: ${AWS_ACCESS_KEY_ID}
+    #     - name: secret_access_key
+    #       value: ${AWS_SECRET_ACCESS_KEY}
+    #
+    #     # The interval at which the agent crawls this data source.
+    #     # Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+    #     - name: crawl_interval
+    #       value: 30s
+
+    # # --- GCP Data Source ---
+    # # Collects inventory and configuration data from a GCP project.
+    # - type: gcp
+    #   id: gcp-production
+    #   config:
+    #     - name: scope_id
+    #       value: your-gcp-project-number
+    #     # Set to "true" when the agent runs on Google Cloud and should use
+    #     # the instance metadata service for authentication.
+    #     - name: in_cloud
+    #       value: "false"
+    #     - name: project_id
+    #       value: my-gcp-project
+    #     - name: credentials_file
+    #       value: /etc/coordimap-agent/gcp-service-account.json
+    #     # Enable VPC flow log collection on this same GCP data source.
+    #     - name: gcp_flows
+    #       value: "true"
+    #     # Optional mappings used for GKE and SQL flow relationships.
+    #     # Example: europe-west1-my-gke-cluster@6f5f56e3-0123-4567-89ab-6c8f1e2a0cde
+    #     - name: external_mappings
+    #       value: region-cluster-name@k8s-cluster-uid
+    #     # Optional comma-separated list of regions to crawl.
+    #     - name: include_regions
+    #       value: europe-west1,us-central1
+    #     - name: crawl_interval
+    #       value: 30s
+    #   # Metric rules are supported for gcp and kubernetes data sources.
+    #   metric_rules:
+    #     - id: cloudsql-high-cpu
+    #       name: CloudSQL High CPU
+    #       provider: gcp_monitoring
+    #       mode: predefined
+    #       predefined:
+    #         name: cloudsql_high_cpu
+    #         params:
+    #           lookback: 5m
+    #           threshold: 0.8
+
+    # # --- PostgreSQL Data Source ---
+    # # Collects schema and metadata from a PostgreSQL database.
+    # - type: postgres
+    #   id: postgres-primary
+    #   config:
+    #     - name: scope_id
+    #       value: your-postgres-system-identifier
+    #     - name: db_name
+    #       value: mydatabase
+    #     - name: db_host
+    #       value: localhost
+    #     - name: db_user
+    #       value: postgres
+    #     - name: db_pass
+    #       value: password # Or ${POSTGRES_PASSWORD}
+    #     - name: ssl_mode
+    #       value: disable # Or require
+    #     # Optional mapping to an external SQL instance internal id.
+    #     - name: mapping_internal_id
+    #       value: sql-instance-internal-id
+    #     - name: crawl_interval
+    #       value: 30s
+
+    # # --- MySQL Data Source ---
+    # # Collects schema and metadata from a MySQL database.
+    # - type: mysql
+    #   id: mysql-primary
+    #   config:
+    #     - name: scope_id
+    #       value: your-mysql-server-uuid
+    #     - name: db_name
+    #       value: mydatabase
+    #     - name: db_host
+    #       value: localhost
+    #     - name: db_user
+    #       value: root
+    #     - name: db_pass
+    #       value: password # Or ${MYSQL_PASSWORD}
+    #     - name: ssl_mode
+    #       value: disable # Or require
+    #     - name: crawl_interval
+    #       value: 30s
+
+    # # --- MariaDB Data Source ---
+    # # Collects schema and metadata from a MariaDB database.
+    # - type: mariadb
+    #   id: mariadb-primary
+    #   config:
+    #     - name: scope_id
+    #       value: your-mariadb-server-uuid
+    #     - name: db_name
+    #       value: mydatabase
+    #     - name: db_host
+    #       value: localhost
+    #     - name: db_user
+    #       value: root
+    #     - name: db_pass
+    #       value: password # Or ${MARIADB_PASSWORD}
+    #     - name: ssl_mode
+    #       value: disable # Or require
+    #     # Optional mapping to an external SQL instance.
+    #     - name: mapping_data_source_id
+    #       value: gcp-production
+    #     - name: mapping_internal_id
+    #       value: sql-instance-id
+    #     - name: crawl_interval
+    #       value: 30s
+
+    # # --- Kubernetes Data Source ---
+    # # Collects resource definitions and status from a Kubernetes cluster.
+    # - type: kubernetes
+    #   id: k8s-cluster-1
+    #   config:
+    #     - name: scope_id
+    #       value: your_k8s_cluster_uid
+    #     # Set to "true" if the agent is running inside the cluster (In-Cluster Config).
+    #     # Set to "false" if using a kubeconfig file.
+    #     - name: in_cluster
+    #       value: "false"
+    #
+    #     # Path to the kubeconfig file (only used if in_cluster is "false").
+    #     - name: config_file
+    #       value: /etc/coordimap-agent/kubeconfig
+    #
+    #     # Stable Kubernetes cluster identifier used in internal names.
+    #     # Example command:
+    #     # kubectl get namespace kube-system -o jsonpath='{.metadata.uid}'
+    #     - name: cluster_name
+    #       value: main-cluster
+    #     # Optional cloud data source id for node-to-cloud mappings.
+    #     - name: cloud_data_source_id
+    #       value: gcp-production
+    #     # Optional Istio Prometheus endpoint.
+    #     - name: prometheus_host
+    #       value: http://prometheus.istio-system.svc:9090
+    #     # Optional Retina Prometheus endpoint.
+    #     - name: retina_prometheus
+    #       value: http://retina-prometheus.monitoring.svc:9090
+    #     # Optional mappings for node and cluster relationships.
+    #     - name: external_mappings
+    #       value: us-central1-node-1@gcp-production
+    #
+    #     - name: crawl_interval
+    #       value: 30s
+    #     # Defaults to "true". Set to "false" to omit Secret data and stringData payloads.
+    #     - name: send_secret_data
+    #       value: "true"
+    #     # Defaults to "true". Set to "false" to omit ConfigMap data and binaryData payloads.
+    #     - name: send_configmap_data
+    #       value: "true"
+    #   # Metric rules are evaluated by the agent and sent as metric trigger elements.
+    #   metric_rules:
+    #     # Custom query example.
+    #     - id: k8s-high-5xx-custom
+    #       name: Kubernetes Service High 5xx
+    #       provider: prometheus
+    #       mode: custom
+    #       custom:
+    #         query: sum(rate(istio_requests_total{response_code=~"5.."}[5m])) by (destination_workload_namespace, destination_canonical_service)
+    #       lookback: 5m
+    #       threshold:
+    #         operator: ">"
+    #         value: 1
+    #       target:
+    #         resolver: kubernetes_service
+    #         namespace_label: destination_workload_namespace
+    #         name_label: destination_canonical_service
+    #
+    #     # Elasticsearch StatefulSet PVC free space < 10%.
+    #     - id: es-pvc-low-free-space
+    #       name: Elasticsearch PVC low free space
+    #       provider: prometheus
+    #       mode: predefined
+    #       predefined:
+    #         name: kubernetes_statefulset_pvc_low_free_space
+    #         params:
+    #           namespace: elasticsearch
+    #           statefulset: elasticsearch
+    #           volume_claim_prefix: data
+    #           threshold: 0.10
+
+    # # --- AWS Flow Logs Data Source ---
+    # # Collects and parses VPC Flow Logs stored in S3.
+    # - type: aws_flow_logs
+    #   id: flowlogs-vpc-1
+    #   config:
+    #     - name: scope_id
+    #       value: your-aws-account-id
+    #     - name: log_format
+    #       value: all
+    #     - name: log_type
+    #       value: S3
+    #     - name: account_id
+    #       value: "123456789012"
+    #     - name: bucket_name
+    #       value: my-flowlogs-bucket
+    #     - name: region
+    #       value: eu-central-1
+    #     - name: access_key_id
+    #       value: ${AWS_ACCESS_KEY_ID}
+    #     - name: secret_access_key
+    #       value: ${AWS_SECRET_ACCESS_KEY}
+    #     - name: crawl_interval
+    #       value: 30s
+
+    # # --- eBPF Flows Data Source ---
+    # # Captures runtime network flows with eBPF.
+    # - type: flows
+    #   id: ebpf-flows
+    #   config:
+    #     # Use "all" or a specific interface name like "eth0".
+    #     - name: interface_name
+    #       value: all
+    #     # Valid values: "server" or "kubernetes".
+    #     - name: deployedAt
+    #       value: kubernetes
+    #     # Required when deployedAt is "kubernetes".
+    #     - name: external_mappings
+    #       value: "*@6f5f56e3-0123-4567-89ab-6c8f1e2a0cde"
+    #     - name: crawl_interval
+    #       value: 30s
+
+    # # --- MongoDB Data Source ---
+    # # Collects metadata from a MongoDB instance.
+    # - type: mongodb
+    #   id: mongo-production
+    #   config:
+    #     - name: scope_id
+    #       value: your-replica-set-id
+    #     # Use "*" to collect from all databases, or specify a name.
+    #     - name: db_name
+    #       value: "*"
+    #     - name: db_host
+    #       value: localhost
+    #     - name: db_user
+    #       value: mongo_user
+    #     - name: db_pass
+    #       value: mongo_pass
+    #     - name: crawl_interval
+    #       value: 30s

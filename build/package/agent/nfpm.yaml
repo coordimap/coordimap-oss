@@ -1,0 +1,24 @@
+name: "coordimap-agent"
+arch: "amd64"
+platform: "linux"
+version: "${VERSION}"
+section: "default"
+priority: "extra"
+maintainer: "Coordimap Team <support@coordimap.com>"
+description: |
+  Coordimap Agent for collecting infrastructure data.
+vendor: "Coordimap"
+homepage: "https://coordimap.com"
+license: "Proprietary"
+contents:
+  - src: "./agent"
+    dst: "/usr/local/bin/coordimap-agent"
+  - src: "./config.example.yaml"
+    dst: "/etc/coordimap-agent/config.yaml"
+    type: "config"
+  - src: "./coordimap-agent.service"
+    dst: "/lib/systemd/system/coordimap-agent.service"
+scripts:
+  postinstall: "./scripts/postinstall.sh"
+  preremove: "./scripts/preremove.sh"
+  postremove: "./scripts/postremove.sh"

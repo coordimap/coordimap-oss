@@ -1,0 +1,28 @@
+package gcp
+
+const (
+	TypeBucket               = "gcp.bucket"
+	TypeCloudRun             = "gcp.cloud_run"
+	TypeVMInstance           = "gcp.vm_instance"
+	TypeNodeGroup            = "gcp.node_group"
+	TypeGKE                  = "gcp.gke"
+	TypeCloudSQL             = "gcp.cloud_sql"
+	TypeInstanceGroup        = "gcp.instance_group"
+	TypeInstanceTemplate     = "gcp.instance_template"
+	TypeDisk                 = "gcp.disk"
+	TypeNetwork              = "gcp.network"
+	TypeSubnetwork           = "gcp.subnetwork"
+	TypeNodePool             = "gcp.node_pool"
+	TypeLoadBalancer         = "gcp.load_balancer"
+	TypeRegion               = "gcp.region"
+	TypeZone                 = "gcp.zone"
+	TypeProject              = "gcp.project"
+	TypeIAMBinding           = "gcp.iam_binding"
+	TypeIAMRole              = "gcp.iam_role"
+	TypeIAMPrincipalUser     = "gcp.iam_principal_user"
+	TypeIAMPrincipalGroup    = "gcp.iam_principal_group"
+	TypeIAMPrincipalDomain   = "gcp.iam_principal_domain"
+	TypeServiceAccount       = "gcp.service_account"
+	TypeIAMPrincipalPublic   = "gcp.iam_principal_public"
+	TypeWorkloadIdentityPool = "gcp.workload_identity_pool"
+)

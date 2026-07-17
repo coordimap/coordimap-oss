@@ -1,0 +1,202 @@
+coordimap:
+  api_key: ${COORDIMAP_API_KEY}
+  data_sources:
+    - type: aws
+      id: aws1
+      config:
+        - name: scope_id
+          value: "your-aws-account-id"
+        - name: policy_config
+          value: "true"
+        - name: access_key_id
+          value: ${AWS_ACCESS_KEY_ID}
+        - name: secret_access_key
+          value: ${AWS_SECRET_ACCESS_KEY}
+        - name: crawl_interval
+          value: 30s
+
+    - type: postgres
+      id: post1
+      config:
+        - name: scope_id
+          value: "your-postgres-system-identifier"
+        - name: db_name
+          value: dbname1
+        - name: db_host
+          value: host1
+        - name: db_user
+          value: user1
+        - name: db_pass
+          value: ${POSTGRES_PASSWORD}
+        - name: ssl_mode
+          value: disable
+        - name: crawl_interval
+          value: 30s
+
+    - type: mysql
+      id: mysql1
+      config:
+        - name: scope_id
+          value: "your-mysql-server-uuid"
+        - name: db_name
+          value: dbname1
+        - name: db_host
+          value: host1
+        - name: db_user
+          value: user1
+        - name: db_pass
+          value: ${MYSQL_PASSWORD}
+        - name: ssl_mode
+          value: disable
+        - name: crawl_interval
+          value: 30s
+
+    - type: mariadb
+      id: mariadb1
+      config:
+        - name: scope_id
+          value: "your-mariadb-server-uuid"
+        - name: db_name
+          value: dbname1
+        - name: db_host
+          value: host1
+        - name: db_user
+          value: user1
+        - name: db_pass
+          value: ${MARIADB_PASSWORD}
+        - name: ssl_mode
+          value: disable
+        - name: crawl_interval
+          value: 30s
+
+    - type: kubernetes
+      id: kube1
+      config:
+        - name: scope_id
+          value: "your-k8s-cluster-uid"
+        - name: in_cluster
+          value: "false"
+        - name: config_file
+          value: /home/user/.kube/config
+        - name: metrics_prometheus_host
+          value: http://prometheus.monitoring.svc.cluster.local:9090
+        - name: crawl_interval
+          value: 30s
+        - name: send_secret_data
+          value: "true"
+        - name: send_configmap_data
+          value: "true"
+      metric_rules:
+        - id: es-pvc-low-free-space
+          name: Elasticsearch PVC low free space
+          provider: prometheus
+          mode: predefined
+          predefined:
+            name: kubernetes_statefulset_pvc_low_free_space
+            params:
+              namespace: elasticsearch
+              statefulset: elasticsearch
+              volume_claim_prefix: data
+              threshold: 0.10
+        - id: es-pvc-free-space-burn-rate
+          name: Elasticsearch PVC free space burn rate
+          provider: prometheus
+          mode: predefined
+          predefined:
+            name: kubernetes_pvc_free_space_burn_rate
+            params:
+              namespace: elasticsearch
+              pvc_regex: "data-elasticsearch-[0-9]+"
+              window: 6h
+              horizon_seconds: 86400
+              threshold: 0.10
+        - id: es-pvc-inode-low-free
+          name: Elasticsearch PVC inode low free
+          provider: prometheus
+          mode: predefined
+          predefined:
+            name: kubernetes_inode_low_free
+            params:
+              namespace: elasticsearch
+              pvc_regex: "data-elasticsearch-[0-9]+"
+              threshold: 0.10
+
+    - type: gcp
+      id: gcp1
+      config:
+        - name: scope_id
+          value: "your-gcp-project-number"
+        - name: in_cloud
+          value: "false"
+        - name: project_id
+          value: your-gcp-project-id
+        - name: credentials_file
+          value: /etc/coordimap-agent/gcp-service-account.json
+        - name: gcp_flows
+          value: "true"
+        - name: external_mappings
+          value: region-cluster-name@your-k8s-cluster-uid
+        - name: include_regions
+          value: europe-west1,us-central1
+        - name: crawl_interval
+          value: 30s
+      metric_rules:
+        - id: cloudsql-high-cpu
+          name: CloudSQL High CPU
+          provider: gcp_monitoring
+          mode: predefined
+          predefined:
+            name: cloudsql_high_cpu
+            params:
+              lookback: 5m
+              threshold: 0.8
+
+    - type: aws_flow_logs
+      id: flowlog1
+      config:
+        - name: scope_id
+          value: "your-aws-account-id"
+        - name: log_format
+          value: all
+        - name: log_type
+          value: S3
+        - name: account_id
+          value: "123456789012"
+        - name: bucket_name
+          value: flowlogs-bucket
+        - name: region
+          value: eu-central-1
+        - name: access_key_id
+          value: ${AWS_ACCESS_KEY_ID}
+        - name: secret_access_key
+          value: ${AWS_SECRET_ACCESS_KEY}
+        - name: crawl_interval
+          value: 30s
+
+    - type: flows
+      id: ebpf-flows
+      config:
+        - name: interface_name
+          value: all
+        - name: deployedAt
+          value: kubernetes
+        - name: external_mappings
+          value: "*@your-k8s-cluster-uid"
+        - name: crawl_interval
+          value: 30s
+
+    - type: mongodb
+      id: mongo-atlas
+      config:
+        - name: scope_id
+          value: "your-replica-set-id"
+        - name: db_name
+          value: "*"
+        - name: db_host
+          value: hostname
+        - name: db_user
+          value: user
+        - name: db_pass
+          value: ${MONGO_PASSWORD}
+        - name: crawl_interval
+          value: 30s
