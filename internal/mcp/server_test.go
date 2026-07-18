@@ -91,6 +91,8 @@ func TestServerToolsAndResources(t *testing.T) {
 	srv := NewServer(store, testRunner{runID: "run-1"})
 	assertResponseContains(t, srv, "tools/list", nil, `coordimap_search_assets`)
 	assertResponseContains(t, srv, "resources/templates/list", nil, `coordimap://assets/{internal_id}`)
+	assertResponseContains(t, srv, "tools/list", nil, `coordimap_render_topology`)
+	assertResponseContains(t, srv, "resources/list", nil, `ui://coordimap/topology.html`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_list_data_sources", "arguments": map[string]any{}}, `test-ds`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_search_assets", "arguments": map[string]any{"query": "seed"}}, `asset-1`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_get_asset", "arguments": map[string]any{"internal_id": "asset-1"}}, `raw_json`)
@@ -107,6 +109,11 @@ func TestServerToolsAndResources(t *testing.T) {
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_get_asset_versions", "arguments": map[string]any{"internal_id": "asset-1", "include_payload": true}}, `updated`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_explore_topology", "arguments": map[string]any{"internal_id": "asset-1", "direction": "outgoing"}}, `unresolved-1`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_explore_topology", "arguments": map[string]any{"internal_id": "asset-1", "direction": "outgoing", "max_nodes": 2}}, `\"truncated\":true`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_render_topology", "arguments": map[string]any{"internal_id": "asset-1"}}, `"structuredContent"`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_render_topology", "arguments": map[string]any{"internal_id": "asset-1"}}, `"max_depth":2`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_render_topology", "arguments": map[string]any{"internal_id": "asset-1"}}, `database-1`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_render_topology", "arguments": map[string]any{"internal_id": "asset-1"}}, `unresolved-1`)
+	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_render_topology", "arguments": map[string]any{"internal_id": "asset-1", "max_nodes": 2}}, `"truncated":true`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_find_relationship_path", "arguments": map[string]any{"from_internal_id": "asset-1", "to_internal_id": "database-1"}}, `\"found\":true`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_find_relationship_path", "arguments": map[string]any{"from_internal_id": "asset-1", "to_internal_id": "disconnected-1"}}, `\"found\":false`)
 	assertResponseContains(t, srv, "tools/call", map[string]any{"name": "coordimap_get_asset_versions", "arguments": map[string]any{"internal_id": "binary-1", "include_payload": true}}, `AAEC`)
@@ -118,6 +125,8 @@ func TestServerToolsAndResources(t *testing.T) {
 	assertToolError(t, srv, map[string]any{"name": "coordimap_search_assets", "arguments": map[string]any{"query": "seed", "limit": 0}}, "limit must be at least 1")
 	assertToolError(t, srv, map[string]any{"name": "coordimap_explore_topology", "arguments": map[string]any{"internal_id": "asset-1", "max_depth": 0}}, "limit must be at least 1")
 	assertToolError(t, srv, map[string]any{"name": "coordimap_find_relationship_path", "arguments": map[string]any{"from_internal_id": "asset-1", "to_internal_id": "binary-1", "direction": "sideways"}}, "isError")
+	assertToolError(t, srv, map[string]any{"name": "coordimap_render_topology", "arguments": map[string]any{"internal_id": "asset-1", "max_nodes": 0}}, "limit must be at least 1")
+	assertToolError(t, srv, map[string]any{"name": "coordimap_render_topology", "arguments": map[string]any{"internal_id": "ambiguous"}}, "asset is ambiguous; supply type and/or data_source_id")
 }
 
 func assertResponseContains(t *testing.T, srv interface {

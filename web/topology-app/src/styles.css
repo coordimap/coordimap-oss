@@ -1,0 +1,26 @@
+
+:root { color: #e7f0f4; background: #070a0f; font-family: "Avenir Next", "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #070a0f; }
+button { font: inherit; }
+.app-shell { min-height: 100vh; padding: clamp(1rem, 2.4vw, 2rem); background: radial-gradient(circle at 20% 0%, #152633 0%, #070a0f 43%), #070a0f; }
+.eyebrow { margin: 0 0 .35rem; color: #8aa6b3; font: 500 .69rem/1.3 "SFMono-Regular", Consolas, monospace; letter-spacing: .12em; text-transform: uppercase; }
+h1, h2 { margin: 0; font-weight: 700; letter-spacing: -.04em; } h1 { font-size: clamp(1.3rem, 3vw, 2rem); } h2 { font-size: 1.1rem; overflow-wrap: anywhere; }
+.reset-control, .node-button { min-height: 44px; border: 1px solid #28414d; color: #d9eff4; background: #0b131b; cursor: pointer; }
+.reset-control { padding: .55rem .8rem; border-radius: 5px; } .reset-control:hover { border-color: #62d6e4; background: #10222b; }
+.reset-control:focus-visible, .node-button:focus-visible { outline: 3px solid #e6f5a6; outline-offset: 2px; }
+.topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(17rem, 23rem); gap: 1rem; }
+.canvas-panel { position: relative; min-height: min(68vh, 680px); overflow: hidden; border: 1px solid #1d3540; border-radius: 8px; background: #070a0f; box-shadow: inset 0 0 0 1px #07131b, 0 20px 48px #0008; }
+.topology-canvas { position: absolute; inset: 0; } .topology-canvas canvas { display: block; width: 100%; height: 100%; }
+.truncation, .empty-relationships { position: absolute; z-index: 1; margin: 0; padding: .55rem .7rem; border-radius: 4px; background: #171315e8; color: #ffd7a8; font-size: .8rem; }
+.truncation { top: .75rem; left: .75rem; } .empty-relationships { right: .75rem; bottom: .75rem; color: #b9d4de; }
+.graph-tooltip { position: absolute; z-index: 1; right: .75rem; top: .75rem; max-width: 46%; margin: 0; padding: .45rem .6rem; overflow-wrap: anywhere; border: 1px solid #38616d; border-radius: 3px; background: #0c1920eb; color: #dff7fb; font-size: .75rem; }
+.inspector { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 1rem; min-width: 0; }
+.detail-panel, .node-list { border-left: 1px solid #2d4651; padding: 1rem 0 1rem 1rem; background: color-mix(in srgb, #0d1720 90%, transparent); }
+dl { display: grid; grid-template-columns: 6.6rem minmax(0, 1fr); gap: .55rem .7rem; margin: 1rem 0 0; font-size: .82rem; } dt { color: #89a7b4; } dd { margin: 0; overflow-wrap: anywhere; color: #e1f3f6; } .unresolved-note { color: #d5c8ff; font-size: .8rem; line-height: 1.5; }
+.node-list { min-height: 0; } .node-list > div { display: grid; gap: .38rem; max-height: 32vh; overflow: auto; padding-right: .5rem; }
+.node-button { display: flex; align-items: center; gap: .55rem; width: 100%; padding: .5rem .65rem; border-radius: 3px; text-align: left; overflow-wrap: anywhere; } .node-button:hover, .node-button.active { border-color: #62d6e4; background: #132631; }
+.layer-dot { flex: 0 0 .65rem; height: .65rem; border-radius: 50%; background: #8bcbd5; }.layer-0 { background: #52d9e8; box-shadow: 0 0 10px #52d9e8; }.layer-2 { background: #a186f0; }
+.empty-state { display: grid; min-height: 80vh; place-items: center; color: #b9d4de; }.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 760px) { .app-shell { padding: 1rem; }.signal-header { align-items: start; flex-direction: column; }.topology-layout { grid-template-columns: 1fr; }.canvas-panel { min-height: 55vh; }.inspector { grid-template-columns: 1fr; }.node-list > div { max-height: 18rem; }.detail-panel, .node-list { border-left: 0; border-top: 1px solid #2d4651; padding: 1rem 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

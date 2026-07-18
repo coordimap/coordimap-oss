@@ -1,0 +1,31 @@
+{
+  "name": "coordimap-topology-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build && mv dist/index.html dist/topology.html",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.4",
+    "@pixi/react": "8.0.5",
+    "d3-force": "3.0.0",
+    "pixi-viewport": "6.0.3",
+    "pixi.js": "8.19.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/d3-force": "3.0.10",
+    "@types/node": "24.10.13",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "jsdom": "29.1.1",
+    "@vitejs/plugin-react": "6.0.3",
+    "typescript": "5.9.3",
+    "vite": "8.1.5",
+    "vite-plugin-singlefile": "2.3.3",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,2 +1,5 @@
 # Local machine configuration may contain infrastructure credentials.
 /cli/coordimap-local/config.yaml
+
+# Topology App dependencies are restored from the committed npm lockfile.
+/web/topology-app/node_modules/

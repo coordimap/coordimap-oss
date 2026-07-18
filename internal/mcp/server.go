@@ -3,11 +3,13 @@ package mcp
 
 import (
 	"context"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/coordimap/agent/internal/app/ports"
 	mcpgo "github.com/mark3labs/mcp-go/mcp"
@@ -18,6 +20,9 @@ import (
 type CrawlRunner interface {
 	Run(dataSourceID string) (runID string, running bool, err error)
 }
+
+//go:embed ui/topology.html
+var topologyAppHTML []byte
 
 // NewServer creates the read-only local inventory MCP server.
 func NewServer(store ports.Store, runner CrawlRunner) *server.MCPServer {
@@ -228,6 +233,72 @@ func NewServer(store ports.Store, runner CrawlRunner) *server.MCPServer {
 		return jsonResult(values), nil
 	})
 
+	topologyRenderTool := mcpgo.NewTool("coordimap_render_topology",
+		mcpgo.WithToolTitle("Render topology diagram"),
+		mcpgo.WithDescription("Render bounded stored crawl-observation topology as an MCP App; results are not live provider state."),
+		mcpgo.WithString("internal_id", mcpgo.Required()),
+		mcpgo.WithString("type"),
+		mcpgo.WithString("data_source_id"),
+		mcpgo.WithString("direction", mcpgo.Enum("incoming", "outgoing", "both")),
+		mcpgo.WithNumber("relation_type"),
+		mcpgo.WithNumber("max_nodes"),
+		mcpgo.WithNumber("max_relationships"),
+		mcpgo.WithReadOnlyHintAnnotation(true),
+		mcpgo.WithDestructiveHintAnnotation(false),
+		mcpgo.WithIdempotentHintAnnotation(true),
+		mcpgo.WithOpenWorldHintAnnotation(false),
+	)
+	topologyRenderTool.Meta = mcpgo.NewMetaFromMap(map[string]any{
+		"ui": map[string]string{"resourceUri": "ui://coordimap/topology.html"},
+	})
+	srv.AddTool(topologyRenderTool, func(ctx context.Context, request mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
+		var args struct {
+			InternalID       string `json:"internal_id"`
+			Type             string `json:"type"`
+			DataSourceID     string `json:"data_source_id"`
+			Direction        string `json:"direction"`
+			RelationType     *int   `json:"relation_type"`
+			MaxNodes         *int   `json:"max_nodes"`
+			MaxRelationships *int   `json:"max_relationships"`
+		}
+		if err := request.BindArguments(&args); err != nil {
+			return toolError(err), nil
+		}
+		if _, err := resolveAsset(ctx, store, args.InternalID, args.Type, args.DataSourceID); err != nil {
+			return toolError(err), nil
+		}
+		direction, err := normalizedDirection(args.Direction)
+		if err != nil {
+			return toolError(err), nil
+		}
+		nodes, err := normalizedLimit(args.MaxNodes, 100, 250)
+		if err != nil {
+			return toolError(err), nil
+		}
+		relationships, err := normalizedLimit(args.MaxRelationships, 200, 500)
+		if err != nil {
+			return toolError(err), nil
+		}
+		var topology ports.Topology
+		if err := read(ctx, store, func(query ports.QueryRepository) error {
+			var err error
+			topology, err = query.ExploreTopology(ctx, ports.TopologySearch{
+				InternalID: args.InternalID, DataSourceID: args.DataSourceID, RelationType: args.RelationType,
+				Direction: direction, MaxDepth: 2, MaxNodes: nodes, MaxRelationships: relationships,
+			})
+			return err
+		}); err != nil {
+			return toolError(err), nil
+		}
+		result := topologyAppValue(topology)
+		response := jsonResult(result)
+		if response.IsError {
+			return response, nil
+		}
+		response.StructuredContent = result
+		return response, nil
+	})
+
 	srv.AddTool(mcpgo.NewTool("coordimap_explore_topology",
 		mcpgo.WithDescription("Explore bounded stored crawl-observation topology; results are not live provider state."),
 		mcpgo.WithString("internal_id", mcpgo.Required()),
@@ -355,6 +426,14 @@ func NewServer(store ports.Store, runner CrawlRunner) *server.MCPServer {
 			status = "already_running"
 		}
 		return jsonResult(map[string]string{"crawl_run_id": runID, "status": status}), nil
+	})
+
+	srv.AddResource(mcpgo.NewResource("ui://coordimap/topology.html", "Coordimap topology diagram", mcpgo.WithMIMEType("text/html;profile=mcp-app")), func(_ context.Context, _ mcpgo.ReadResourceRequest) ([]mcpgo.ResourceContents, error) {
+		return []mcpgo.ResourceContents{mcpgo.TextResourceContents{
+			URI:      "ui://coordimap/topology.html",
+			MIMEType: "text/html;profile=mcp-app",
+			Text:     string(topologyAppHTML),
+		}}, nil
 	})
 
 	srv.AddResource(mcpgo.NewResource("coordimap://data-sources", "Coordimap data sources", mcpgo.WithMIMEType("application/json")), func(ctx context.Context, _ mcpgo.ReadResourceRequest) ([]mcpgo.ResourceContents, error) {
@@ -576,6 +655,67 @@ func normalizedDirection(direction string) (string, error) {
 		return "", fmt.Errorf("direction must be incoming, outgoing, or both")
 	}
 	return direction, nil
+}
+
+type topologyAppValueDTO struct {
+	Root      topologyAppRootDTO   `json:"root"`
+	Nodes     []topologyAppNodeDTO `json:"nodes"`
+	Edges     []topologyAppEdgeDTO `json:"edges"`
+	MaxDepth  int                  `json:"max_depth"`
+	Truncated bool                 `json:"truncated"`
+}
+
+type topologyAppRootDTO struct {
+	InternalID   string    `json:"internal_id"`
+	Type         string    `json:"type"`
+	DataSourceID string    `json:"data_source_id"`
+	Name         string    `json:"name"`
+	Status       string    `json:"status"`
+	LastSeen     time.Time `json:"last_seen"`
+}
+
+type topologyAppNodeDTO struct {
+	InternalID   string     `json:"internal_id"`
+	Type         *string    `json:"type"`
+	DataSourceID *string    `json:"data_source_id"`
+	Name         *string    `json:"name"`
+	Status       *string    `json:"status"`
+	LastSeen     *time.Time `json:"last_seen"`
+}
+
+type topologyAppEdgeDTO struct {
+	DataSourceID          string    `json:"data_source_id"`
+	SourceInternalID      string    `json:"source_internal_id"`
+	DestinationInternalID string    `json:"destination_internal_id"`
+	RelationshipType      string    `json:"relationship_type"`
+	RelationType          int       `json:"relation_type"`
+	FirstSeen             time.Time `json:"first_seen"`
+	LastSeen              time.Time `json:"last_seen"`
+}
+
+func topologyAppValue(topology ports.Topology) topologyAppValueDTO {
+	nodes := make([]topologyAppNodeDTO, len(topology.Nodes))
+	for index, node := range topology.Nodes {
+		nodes[index] = topologyAppNodeDTO{
+			InternalID: node.InternalID, Type: node.Type, DataSourceID: node.DataSourceID,
+			Name: node.Name, Status: node.Status, LastSeen: node.LastSeen,
+		}
+	}
+	edges := make([]topologyAppEdgeDTO, len(topology.Relationships))
+	for index, relationship := range topology.Relationships {
+		edges[index] = topologyAppEdgeDTO{
+			DataSourceID: relationship.DataSourceID, SourceInternalID: relationship.SourceInternalID,
+			DestinationInternalID: relationship.DestinationInternalID, RelationshipType: relationship.RelationshipType,
+			RelationType: relationship.RelationType, FirstSeen: relationship.FirstSeen, LastSeen: relationship.LastSeen,
+		}
+	}
+	return topologyAppValueDTO{
+		Root: topologyAppRootDTO{
+			InternalID: topology.Root.InternalID, Type: topology.Root.Type, DataSourceID: topology.Root.DataSourceID,
+			Name: topology.Root.Name, Status: topology.Root.Status, LastSeen: topology.Root.LastSeen,
+		},
+		Nodes: nodes, Edges: edges, MaxDepth: 2, Truncated: topology.Truncated,
+	}
 }
 
 func jsonResult(value any) *mcpgo.CallToolResult {
